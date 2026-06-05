@@ -1,0 +1,62 @@
+# 冒烟测试 — 状态码验证
+name: HTTP 状态码测试
+description: 验证不同 HTTP 状态码的处理
+base_url: "{{env.base_url}}"
+tags: [smoke, status]
+
+cases:
+  - name: 200 OK
+    tags: [P0]
+    request:
+      method: GET
+      path: /status/200
+    expect:
+      status_code: 200
+
+  - name: 201 Created
+    tags: [P1]
+    request:
+      method: GET
+      path: /status/201
+    expect:
+      status_code: 201
+
+  - name: 400 Bad Request
+    tags: [P1]
+    request:
+      method: GET
+      path: /status/400
+    expect:
+      status_code: 400
+
+  - name: 401 Unauthorized
+    tags: [P1]
+    request:
+      method: GET
+      path: /status/401
+    expect:
+      status_code: 401
+
+  - name: 403 Forbidden
+    tags: [P1]
+    request:
+      method: GET
+      path: /status/403
+    expect:
+      status_code: 403
+
+  - name: 404 Not Found
+    tags: [P1]
+    request:
+      method: GET
+      path: /status/404
+    expect:
+      status_code: 404
+
+  - name: 500 Internal Server Error
+    tags: [P1]
+    request:
+      method: GET
+      path: /status/500
+    expect:
+      status_code: 500

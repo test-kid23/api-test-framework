@@ -1,0 +1,241 @@
+"""HTTP 客户端封装 — 基于 httpx 的请求引擎"""
+
+from __future__ import annotations
+
+import json
+from typing import Any
+
+import httpx
+
+from framework.models import BodyType, HttpRequest, HttpResponse
+from framework.utils.file_loader import is_file_ref, load_file_ref
+from framework.utils.logger import Logger
+from framework.utils.retry import retry
+
+logger = Logger.get("client")
+
+
+class HttpClient:
+    """HTTP 客户端封装
+
+    基于 httpx，支持连接池复用、重试、超时控制等。
+    """
+
+    def __init__(self, config: dict[str, Any], base_url: str = "") -> None:
+        self._base_url = base_url.rstrip("/")
+        timeout = config.get("timeout", 30)
+        verify_ssl = config.get("verify_ssl", False)
+        max_retries = config.get("max_retries", 0)
+        retry_delay = config.get("retry_delay", 1)
+        retry_on_status = config.get("retry_on", [502, 503, 504])
+        follow_redirects = config.get("follow_redirects", True)
+
+        # 默认请求头
+        self._default_headers = config.get(
+            "default_headers",
+            {
+                "Accept": "application/json",
+                "User-Agent": "AutoTest/1.0",
+            },
+        )
+
+        # 创建 httpx 客户端（连接池复用）
+        self._client = httpx.Client(
+            base_url=self._base_url or None,  # type: ignore[arg-type]
+            timeout=httpx.Timeout(timeout),
+            verify=verify_ssl,
+            follow_redirects=follow_redirects,
+            limits=httpx.Limits(
+                max_connections=config.get("pool_connections", 10),
+                max_keepalive_connections=config.get("pool_maxsize", 10),
+            ),
+        )
+
+        self._max_retries = max_retries
+        self._retry_delay = retry_delay
+        self._retry_on_status = retry_on_status
+
+    def request(self, req: HttpRequest, variables: dict[str, Any] | None = None) -> HttpResponse:
+        """发送 HTTP 请求
+
+        Args:
+            req: 请求对象
+            variables: 变量字典（用于日志记录）
+
+        Returns:
+            HttpResponse 对象
+        """
+        # 合并请求头
+        headers = {**self._default_headers, **req.headers}
+
+        # 构建请求参数
+        kwargs: dict[str, Any] = {
+            "method": req.method.value,
+            "url": req.path,
+            "headers": headers,
+            "params": req.params or None,
+        }
+
+        # 超时覆盖
+        if req.timeout is not None:
+            kwargs["timeout"] = httpx.Timeout(req.timeout)
+
+        # SSL 覆盖
+        if req.verify_ssl is not None:
+            # 需要重新创建客户端以修改 verify
+            pass  # httpx 不支持单请求覆盖 verify，忽略
+
+        # 请求体
+        if req.body is not None:
+            body_kwargs = self._build_body(req)
+            # _build_body 可能返回 "headers" 键（如 JSON 的 Content-Type），
+            # 必须合并到已有的 headers 中，避免覆盖 Authorization 等关键头
+            if "headers" in body_kwargs:
+                headers.update(body_kwargs.pop("headers"))
+                kwargs["headers"] = headers
+            kwargs.update(body_kwargs)
+
+        # 文件上传
+        if req.files:
+            kwargs["files"] = self._build_files(req.files)
+
+        # 认证
+        if req.auth:
+            auth_type = req.auth.get("type", "bearer").lower()
+            if auth_type == "bearer":
+                headers["Authorization"] = f"Bearer {req.auth.get('token', '')}"
+            elif auth_type == "basic":
+                kwargs["auth"] = httpx.BasicAuth(
+                    req.auth.get("username", ""),
+                    req.auth.get("password", ""),
+                )
+
+        # 发送请求（带重试）
+        logger.info(f">>> {req.method.value} {req.path}")
+        if req.body and logger.isEnabledFor(10):  # DEBUG
+            body_log = json.dumps(req.body, ensure_ascii=False, default=str)[:500]
+            body_log = Logger.mask_sensitive_str(body_log)
+            logger.debug(f"请求体: {body_log}")
+
+        # 脱敏后记录请求头（DEBUG 级别）
+        if logger.isEnabledFor(10):
+            safe_headers = Logger.mask_sensitive(dict(headers))
+            logger.debug(f"请求头: {safe_headers}")
+
+        response = self._send_with_retry(**kwargs)
+
+        # 脱敏后记录响应头
+        if logger.isEnabledFor(10):
+            safe_resp_headers = Logger.mask_sensitive(dict(response.headers))
+            logger.debug(f"响应头: {safe_resp_headers}")
+
+        logger.info(
+            f"<<< {response.status_code} {req.path} "
+            f"({response.elapsed.total_seconds() * 1000:.0f}ms)"
+        )
+
+        return self._to_response(response, req)
+
+    def get(self, path: str, **kwargs: Any) -> HttpResponse:
+        kwargs.setdefault("method", "GET")
+        return self.request(HttpRequest(method="GET", path=path, **kwargs))  # type: ignore[arg-type]
+
+    def post(self, path: str, **kwargs: Any) -> HttpResponse:
+        return self.request(HttpRequest(method="POST", path=path, **kwargs))  # type: ignore[arg-type]
+
+    def put(self, path: str, **kwargs: Any) -> HttpResponse:
+        return self.request(HttpRequest(method="PUT", path=path, **kwargs))  # type: ignore[arg-type]
+
+    def delete(self, path: str, **kwargs: Any) -> HttpResponse:
+        return self.request(HttpRequest(method="DELETE", path=path, **kwargs))  # type: ignore[arg-type]
+
+    def patch(self, path: str, **kwargs: Any) -> HttpResponse:
+        return self.request(HttpRequest(method="PATCH", path=path, **kwargs))  # type: ignore[arg-type]
+
+    def close(self) -> None:
+        """关闭客户端，释放连接池"""
+        self._client.close()
+
+    # ---------- 内部方法 ----------
+
+    def _send_with_retry(self, **kwargs: Any) -> httpx.Response:
+        """发送请求（带重试逻辑）"""
+        if self._max_retries > 0:
+            retry_decorator = retry(
+                max_retries=self._max_retries,
+                delay=self._retry_delay,
+                retry_on_status=self._retry_on_status,
+            )
+            send_fn = retry_decorator(self._client.request)
+            return send_fn(**kwargs)  # type: ignore[no-any-return]
+        return self._client.request(**kwargs)
+
+    def _build_body(self, req: HttpRequest) -> dict[str, Any]:
+        """根据 body_type 构建请求体"""
+        body = req.body
+
+        if req.body_type == BodyType.JSON:
+            return {
+                "content": json.dumps(body, ensure_ascii=False, default=str).encode(),
+                "headers": {"Content-Type": "application/json"},
+            }
+
+        elif req.body_type == BodyType.FORM:
+            return {"data": body}
+
+        elif req.body_type == BodyType.MULTIPART:
+            return {"files": self._build_multipart(body)}
+
+        elif req.body_type == BodyType.RAW:
+            if isinstance(body, str):
+                return {"content": body.encode()}
+            return {"content": body}
+
+        return {}
+
+    def _build_multipart(self, body: Any) -> list[tuple[str, Any]]:
+        """构建 multipart 请求体"""
+        if not isinstance(body, dict):
+            return []
+
+        parts: list[tuple[str, Any]] = []
+        for key, value in body.items():
+            if is_file_ref(str(value)):
+                file_path = load_file_ref(str(value))
+                parts.append((key, (file_path.name, open(file_path, "rb"))))
+            else:
+                parts.append((key, (None, str(value).encode())))
+        return parts
+
+    def _build_files(self, files: dict[str, str]) -> list[tuple[str, Any]]:
+        """构建文件上传"""
+        result: list[tuple[str, Any]] = []
+        for field_name, file_ref in files.items():
+            if is_file_ref(file_ref):
+                file_path = load_file_ref(file_ref)
+                result.append((field_name, (file_path.name, open(file_path, "rb"))))
+            else:
+                result.append((field_name, open(file_ref, "rb")))
+        return result
+
+    def _to_response(self, resp: httpx.Response, req: HttpRequest) -> HttpResponse:
+        """将 httpx.Response 转换为 HttpResponse"""
+        # 解析响应体
+        body: Any
+        try:
+            body = resp.json()
+        except (json.JSONDecodeError, ValueError):
+            body = resp.text
+
+        # 计算大小
+        size_bytes = len(resp.content)
+
+        return HttpResponse(
+            status_code=resp.status_code,
+            headers=dict(resp.headers),
+            body=body,
+            elapsed_ms=resp.elapsed.total_seconds() * 1000,
+            size_bytes=size_bytes,
+            url=str(resp.url),
+            request_body=req.body,
+        )

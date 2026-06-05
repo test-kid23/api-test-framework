@@ -1,0 +1,15 @@
+version: "3.8"
+
+services:
+  test-runner:
+    build: .
+    environment:
+      - ENV=${ENV:-staging}
+      - DB_PASSWORD=${DB_PASSWORD:-}
+      - API_KEY=${API_KEY:-}
+    volumes:
+      - ./reports:/app/reports
+      - ./config:/app/config
+      - ./testcases:/app/testcases
+      - ./test_data:/app/test_data
+    command: ["--env=${ENV:-staging}", "-n", "4", "--alluredir=/app/reports/allure-results"]

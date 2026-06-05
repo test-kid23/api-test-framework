@@ -1,0 +1,46 @@
+# 回归测试 — 认证流程（使用 httpbin 模拟）
+name: 认证接口测试
+description: 验证 Bearer Token 认证流程
+base_url: "{{env.base_url}}"
+tags: [regression, auth]
+
+cases:
+  - name: 模拟登录获取 Token
+    description: 通过 POST 接口模拟登录，提取 token
+    tags: [P0, login]
+    request:
+      method: POST
+      path: /post
+      body:
+        username: "{{env.admin_user}}"
+        password: "{{env.admin_pass}}"
+        grant_type: password
+    expect:
+      status_code: 200
+      jsonpath:
+        $.json.username: "{{env.admin_user}}"
+    extract:
+      # 从响应体中提取字段作为 token（httpbin 会回显 body）
+      auth_token: $.json.username
+
+  - name: 使用 Token 访问接口
+    description: 使用提取的 token 访问接口
+    tags: [P0, protected]
+    request:
+      method: GET
+      path: /bearer
+      headers:
+        Authorization: "Bearer {{auth_token}}"
+    expect:
+      status_code: 200
+      jsonpath:
+        $.authenticated: true
+
+  - name: 未授权访问
+    description: 不带 token 访问受保护接口
+    tags: [P1, security]
+    request:
+      method: GET
+      path: /status/401
+    expect:
+      status_code: 401

@@ -1,0 +1,77 @@
+name: API Tests
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main]
+  schedule:
+    - cron: '0 2 * * *'  # 每天凌晨 2 点
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: '测试环境'
+        required: true
+        default: 'staging'
+        type: choice
+        options: [dev, staging, production]
+      tags:
+        description: '用例标签'
+        required: false
+        default: 'smoke'
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ['3.11', '3.12']
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Cache pip
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-${{ hashFiles('requirements.txt') }}
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run tests
+        env:
+          ENV: ${{ github.event.inputs.environment || 'staging' }}
+          DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
+          API_KEY: ${{ secrets.API_KEY }}
+        run: |
+          pytest --env=${{ env.ENV }} \
+                 -m "${{ github.event.inputs.tags || 'smoke' }}" \
+                 -n auto \
+                 --alluredir=reports/allure-results \
+                 -v
+
+      - name: Upload Allure Results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: allure-results-py${{ matrix.python-version }}
+          path: reports/allure-results/
+
+      - name: Generate Allure Report
+        uses: simple-elf/allure-report-action@v1
+        if: always()
+        with:
+          allure_results: reports/allure-results
+
+      - name: Deploy report to GitHub Pages
+        uses: peaceiris/actions-gh-pages@v4
+        if: always()
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: allure-history

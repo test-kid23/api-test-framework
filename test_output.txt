@@ -1,0 +1,274 @@
+============================= test session starts =============================
+platform win32 -- Python 3.12.10, pytest-8.4.2, pluggy-1.6.0 -- C:\Users\Admin\AppData\Local\Programs\Python\Python312\python.exe
+cachedir: .pytest_cache
+rootdir: C:\private\aibuilder\api-test-framework
+configfile: pyproject.toml
+plugins: anyio-4.13.0, asyncio-0.24.0, cov-5.0.0, env-1.2.0, xdist-3.8.0, respx-0.23.1
+asyncio: mode=Mode.STRICT, default_loop_scope=None
+collecting ... collected 154 items
+
+tests/framework/test_config.py::TestValidConfig::test_valid_minimal_config_loads 
+-------------------------------- live log call --------------------------------
+2026-06-03 20:21:14 [INFO    ] framework.config: ���ü������: env=dev, base_url=http://localhost:8080
+PASSED                                                                   [  0%]
+tests/framework/test_config.py::TestValidConfig::test_autotest_config_model_validate PASSED [  1%]
+tests/framework/test_config.py::TestValidConfig::test_default_values_applied PASSED [  1%]
+tests/framework/test_config.py::TestValidConfig::test_extra_fields_ignored PASSED [  2%]
+tests/framework/test_config.py::TestTypeErrors::test_timeout_string_fails_with_field_path PASSED [  3%]
+tests/framework/test_config.py::TestTypeErrors::test_verify_ssl_wrong_type PASSED [  3%]
+tests/framework/test_config.py::TestTypeErrors::test_logging_level_invalid_literal PASSED [  4%]
+tests/framework/test_config.py::TestTypeErrors::test_execution_mode_invalid_literal PASSED [  5%]
+tests/framework/test_config.py::TestRangeErrors::test_timeout_below_minimum PASSED [  5%]
+tests/framework/test_config.py::TestRangeErrors::test_timeout_above_maximum PASSED [  6%]
+tests/framework/test_config.py::TestRangeErrors::test_max_retries_negative PASSED [  7%]
+tests/framework/test_config.py::TestRangeErrors::test_max_retries_above_maximum PASSED [  7%]
+tests/framework/test_config.py::TestRangeErrors::test_parallel_workers_below_minimum PASSED [  8%]
+tests/framework/test_config.py::TestRangeErrors::test_parallel_workers_above_maximum PASSED [  9%]
+tests/framework/test_config.py::TestSubConfigs::test_http_config_boundaries PASSED [  9%]
+tests/framework/test_config.py::TestSubConfigs::test_db_config_driver_invalid PASSED [ 10%]
+tests/framework/test_config.py::TestSubConfigs::test_report_config_adapter_invalid PASSED [ 11%]
+tests/framework/test_config.py::TestSubConfigs::test_execution_config_defaults PASSED [ 11%]
+tests/framework/test_config.py::TestConfigLoaderIntegration::test_invalid_config_raises_on_load PASSED [ 12%]
+tests/framework/test_config.py::TestConfigLoaderIntegration::test_valid_config_loads_successfully 
+-------------------------------- live log call --------------------------------
+2026-06-03 20:21:14 [INFO    ] framework.config: ���ü������: env=dev, base_url=http://localhost:8080
+PASSED                                                                   [ 12%]
+tests/framework/test_config.py::TestConfigLoaderIntegration::test_default_env_when_not_specified 
+-------------------------------- live log call --------------------------------
+2026-06-03 20:21:14 [INFO    ] framework.config: ���ü������: env=dev, base_url=http://localhost:8080
+PASSED                                                                   [ 13%]
+tests/framework/test_config.py::TestConfigLoaderIntegration::test_extra_fields_in_yaml_do_not_cause_errors 
+-------------------------------- live log call --------------------------------
+2026-06-03 20:21:14 [INFO    ] framework.config: ���ü������: env=dev, base_url=http://localhost
+PASSED                                                                   [ 14%]
+tests/framework/test_config.py::TestConfigLoaderIntegration::test_env_data_overrides_global 
+-------------------------------- live log call --------------------------------
+2026-06-03 20:21:14 [INFO    ] framework.config: ���ü������: env=dev, base_url=http://localhost
+PASSED                                                                   [ 14%]
+tests/framework/test_config.py::TestConfigValidationError::test_error_contains_field_path PASSED [ 15%]
+tests/framework/test_config.py::TestConfigValidationError::test_multiple_errors_collected PASSED [ 16%]
+tests/framework/test_config.py::TestConfigValidationError::test_from_pydantic_creates_correct_error PASSED [ 16%]
+tests/framework/test_config.py::TestBackwardCompatibility::test_existing_config_yaml_validates PASSED [ 17%]
+tests/framework/test_config.py::TestBackwardCompatibility::test_existing_env_yaml_validates PASSED [ 18%]
+tests/framework/test_runner.py::TestDefaultExecutors::test_default_executors_include_ws_and_http PASSED [ 18%]
+tests/framework/test_runner.py::TestDefaultExecutors::test_ws_executor_has_priority_over_http PASSED [ 19%]
+tests/framework/test_runner.py::TestHttpRouting::test_supports_http_case PASSED [ 20%]
+tests/framework/test_runner.py::TestHttpRouting::test_does_not_support_ws_case PASSED [ 20%]
+tests/framework/test_runner.py::TestHttpRouting::test_does_not_support_empty_case PASSED [ 21%]
+tests/framework/test_runner.py::TestWsRouting::test_supports_ws_case PASSED [ 22%]
+tests/framework/test_runner.py::TestWsRouting::test_does_not_support_http_case PASSED [ 22%]
+tests/framework/test_runner.py::TestWsRouting::test_does_not_support_empty_case PASSED [ 23%]
+tests/framework/test_runner.py::TestNoExecutorFound::test_raises_when_no_executor_matches PASSED [ 24%]
+tests/framework/test_runner.py::TestNoExecutorFound::test_raises_with_custom_executors_empty_list PASSED [ 24%]
+tests/framework/test_runner.py::TestNoExecutorFound::test_exception_is_execution_error PASSED [ 25%]
+tests/framework/test_runner.py::TestStrategyRouting::test_routes_to_matching_executor 
+-------------------------------- live log call --------------------------------
+2026-06-03 20:21:14 [INFO    ] framework.runner: \u2705 PASS test_http (0ms)\nPASSED                                                                   [ 25%]
+tests/framework/test_runner.py::TestStrategyRouting::test_falls_back_to_no_executor PASSED [ 26%]
+tests/framework/test_runner.py::TestStrategyRouting::test_first_matching_executor_selected 
+-------------------------------- live log call --------------------------------
+2026-06-03 20:21:14 [INFO    ] framework.runner: \u2705 PASS test_http (0ms)\nPASSED                                                                   [ 27%]
+tests/framework/test_runner.py::TestStrategyRouting::test_skipped_case_bypasses_executors 
+-------------------------------- live log call --------------------------------
+2026-06-03 20:21:14 [INFO    ] framework.runner: ��������: test_http
+PASSED                                                                   [ 27%]
+tests/framework/test_runner.py::TestCustomExecutor::test_custom_executor_injection 
+-------------------------------- live log call --------------------------------
+2026-06-03 20:21:14 [INFO    ] framework.runner: \u2705 PASS test_empty (0ms)\nPASSED                                                                   [ 28%]
+tests/framework/test_runner.py::TestCustomExecutor::test_custom_executor_combined_with_defaults PASSED [ 29%]
+tests/framework/test_runner.py::TestCustomExecutor::test_executor_order_determines_priority 
+-------------------------------- live log call --------------------------------
+2026-06-03 20:21:14 [INFO    ] framework.runner: \u2705 PASS test_http (0ms)\nPASSED                                                                   [ 29%]
+tests/framework/test_assertion.py::TestDefaultOperators::test_contains_all_16_operators PASSED [ 30%]
+tests/framework/test_assertion.py::TestDefaultOperators::test_is_mapping_proxy_type PASSED [ 31%]
+tests/framework/test_assertion.py::TestDefaultOperators::test_is_immutable__cannot_setitem PASSED [ 31%]
+tests/framework/test_assertion.py::TestDefaultOperators::test_is_immutable__cannot_delitem PASSED [ 32%]
+tests/framework/test_assertion.py::TestDefaultOperators::test_exact_count_16 PASSED [ 33%]
+tests/framework/test_assertion.py::TestOperatorEq::test_equal_numbers PASSED [ 33%]
+tests/framework/test_assertion.py::TestOperatorEq::test_equal_strings PASSED [ 34%]
+tests/framework/test_assertion.py::TestOperatorEq::test_not_equal PASSED [ 35%]
+tests/framework/test_assertion.py::TestOperatorEq::test_type_aware__int_string PASSED [ 35%]
+tests/framework/test_assertion.py::TestOperatorEq::test_type_aware__float_string PASSED [ 36%]
+tests/framework/test_assertion.py::TestOperatorEq::test_string_comparison_fallback PASSED [ 37%]
+tests/framework/test_assertion.py::TestOperatorNe::test_not_equal PASSED [ 37%]
+tests/framework/test_assertion.py::TestOperatorNe::test_equal__should_fail PASSED [ 38%]
+tests/framework/test_assertion.py::TestOperatorGt::test_greater PASSED   [ 38%]
+tests/framework/test_assertion.py::TestOperatorGt::test_not_greater PASSED [ 39%]
+tests/framework/test_assertion.py::TestOperatorGt::test_equal__not_greater PASSED [ 40%]
+tests/framework/test_assertion.py::TestOperatorGte::test_greater PASSED  [ 40%]
+tests/framework/test_assertion.py::TestOperatorGte::test_equal PASSED    [ 41%]
+tests/framework/test_assertion.py::TestOperatorGte::test_less PASSED     [ 42%]
+tests/framework/test_assertion.py::TestOperatorLt::test_less PASSED      [ 42%]
+tests/framework/test_assertion.py::TestOperatorLt::test_not_less PASSED  [ 43%]
+tests/framework/test_assertion.py::TestOperatorLte::test_less PASSED     [ 44%]
+tests/framework/test_assertion.py::TestOperatorLte::test_equal PASSED    [ 44%]
+tests/framework/test_assertion.py::TestOperatorLte::test_greater PASSED  [ 45%]
+tests/framework/test_assertion.py::TestOperatorContains::test_substring_found PASSED [ 46%]
+tests/framework/test_assertion.py::TestOperatorContains::test_substring_not_found PASSED [ 46%]
+tests/framework/test_assertion.py::TestOperatorContains::test_list_contains PASSED [ 47%]
+tests/framework/test_assertion.py::TestOperatorContains::test_list_not_contains PASSED [ 48%]
+tests/framework/test_assertion.py::TestOperatorNotContains::test_not_found PASSED [ 48%]
+tests/framework/test_assertion.py::TestOperatorNotContains::test_found__should_fail PASSED [ 49%]
+tests/framework/test_assertion.py::TestOperatorMatches::test_regex_match PASSED [ 50%]
+tests/framework/test_assertion.py::TestOperatorMatches::test_regex_no_match PASSED [ 50%]
+tests/framework/test_assertion.py::TestOperatorIn::test_in_list PASSED   [ 51%]
+tests/framework/test_assertion.py::TestOperatorIn::test_not_in_list PASSED [ 51%]
+tests/framework/test_assertion.py::TestOperatorIn::test_in_string PASSED [ 52%]
+tests/framework/test_assertion.py::TestOperatorNotIn::test_not_in_list PASSED [ 53%]
+tests/framework/test_assertion.py::TestOperatorNotIn::test_in_list__should_fail PASSED [ 53%]
+tests/framework/test_assertion.py::TestOperatorNotNull::test_not_none PASSED [ 54%]
+tests/framework/test_assertion.py::TestOperatorNotNull::test_zero_is_not_none PASSED [ 55%]
+tests/framework/test_assertion.py::TestOperatorNotNull::test_empty_string_is_not_none PASSED [ 55%]
+tests/framework/test_assertion.py::TestOperatorNotNull::test_none PASSED [ 56%]
+tests/framework/test_assertion.py::TestOperatorIsNull::test_none PASSED  [ 57%]
+tests/framework/test_assertion.py::TestOperatorIsNull::test_not_none PASSED [ 57%]
+tests/framework/test_assertion.py::TestOperatorType::test_str PASSED     [ 58%]
+tests/framework/test_assertion.py::TestOperatorType::test_int PASSED     [ 59%]
+tests/framework/test_assertion.py::TestOperatorType::test_float PASSED   [ 59%]
+tests/framework/test_assertion.py::TestOperatorType::test_bool PASSED    [ 60%]
+tests/framework/test_assertion.py::TestOperatorType::test_list PASSED    [ 61%]
+tests/framework/test_assertion.py::TestOperatorType::test_dict PASSED    [ 61%]
+tests/framework/test_assertion.py::TestOperatorType::test_wrong_type PASSED [ 62%]
+tests/framework/test_assertion.py::TestOperatorLength::test_exact_length PASSED [ 62%]
+tests/framework/test_assertion.py::TestOperatorLength::test_wrong_length PASSED [ 63%]
+tests/framework/test_assertion.py::TestOperatorLength::test_string_length_gt PASSED [ 64%]
+tests/framework/test_assertion.py::TestOperatorLength::test_string_length_gte PASSED [ 64%]
+tests/framework/test_assertion.py::TestOperatorLength::test_string_length_lt PASSED [ 65%]
+tests/framework/test_assertion.py::TestOperatorLength::test_no_len_object PASSED [ 66%]
+tests/framework/test_assertion.py::TestOperatorBetween::test_in_range PASSED [ 66%]
+tests/framework/test_assertion.py::TestOperatorBetween::test_at_lower_bound PASSED [ 67%]
+tests/framework/test_assertion.py::TestOperatorBetween::test_at_upper_bound PASSED [ 68%]
+tests/framework/test_assertion.py::TestOperatorBetween::test_below_range PASSED [ 68%]
+tests/framework/test_assertion.py::TestOperatorBetween::test_above_range PASSED [ 69%]
+tests/framework/test_assertion.py::TestOperatorBetween::test_invalid_expected PASSED [ 70%]
+tests/framework/test_assertion.py::TestAssertionEngineInit::test_default_operators_copied_to_instance PASSED [ 70%]
+tests/framework/test_assertion.py::TestAssertionEngineInit::test_instance_count_matches_default PASSED [ 71%]
+tests/framework/test_assertion.py::TestAssertionEngineInit::test_instance_operators_are_independent__add PASSED [ 72%]
+tests/framework/test_assertion.py::TestAssertionEngineInit::test_instance_operators_are_independent__override PASSED [ 72%]
+tests/framework/test_assertion.py::TestAssertionEngineInit::test_default_operators_unchanged_after_instance_override PASSED [ 73%]
+tests/framework/test_assertion.py::TestRegisterOperator::test_register_new_operator PASSED [ 74%]
+tests/framework/test_assertion.py::TestRegisterOperator::test_register_overrides_existing PASSED [ 74%]
+tests/framework/test_assertion.py::TestRegisterOperator::test_register_returns_function PASSED [ 75%]
+tests/framework/test_assertion.py::TestRegisterOperator::test_register_does_not_affect_class_default PASSED [ 75%]
+tests/framework/test_assertion.py::TestGetOperator::test_get_builtin PASSED [ 76%]
+tests/framework/test_assertion.py::TestGetOperator::test_get_unknown_returns_none PASSED [ 77%]
+tests/framework/test_assertion.py::TestGetOperator::test_get_custom_after_register PASSED [ 77%]
+tests/framework/test_assertion.py::TestAssertResponse::test_status_code_assertion_passes 
+-------------------------------- live log call --------------------------------
+2026-06-03 20:21:14 [INFO    ] framework.assertion: ���� 1 ��: 1 ͨ��, 0 ʧ��
+PASSED                                                                   [ 78%]
+tests/framework/test_assertion.py::TestAssertResponse::test_status_code_assertion_fails 
+-------------------------------- live log call --------------------------------
+2026-06-03 20:21:14 [WARNING ] framework.assertion: \u65ad\u8a00\u5931\u8d25: \u274c FAIL | status_code | eq | expected=404 | actual=200\n2026-06-03 20:21:14 [INFO    ] framework.assertion: ���� 1 ��: 0 ͨ��, 1 ʧ��
+PASSED                                                                   [ 79%]
+tests/framework/test_assertion.py::TestAssertResponse::test_body_field_assertion 
+-------------------------------- live log call --------------------------------
+2026-06-03 20:21:14 [INFO    ] framework.assertion: ���� 2 ��: 2 ͨ��, 0 ʧ��
+PASSED                                                                   [ 79%]
+tests/framework/test_assertion.py::TestAssertResponse::test_body_field_nested 
+-------------------------------- live log call --------------------------------
+2026-06-03 20:21:14 [INFO    ] framework.assertion: ���� 1 ��: 1 ͨ��, 0 ʧ��
+PASSED                                                                   [ 80%]
+tests/framework/test_assertion.py::TestAssertResponse::test_contains_operator_on_body 
+-------------------------------- live log call --------------------------------
+2026-06-03 20:21:14 [INFO    ] framework.assertion: ���� 1 ��: 1 ͨ��, 0 ʧ��
+PASSED                                                                   [ 81%]
+tests/framework/test_assertion.py::TestAssertResponse::test_type_operator_on_body 
+-------------------------------- live log call --------------------------------
+2026-06-03 20:21:14 [INFO    ] framework.assertion: ���� 1 ��: 1 ͨ��, 0 ʧ��
+PASSED                                                                   [ 81%]
+tests/framework/test_assertion.py::TestAssertResponse::test_not_null_operator 
+-------------------------------- live log call --------------------------------
+2026-06-03 20:21:14 [INFO    ] framework.assertion: ���� 1 ��: 1 ͨ��, 0 ʧ��
+PASSED                                                                   [ 82%]
+tests/framework/test_assertion.py::TestAssertResponse::test_is_null_operator 
+-------------------------------- live log call --------------------------------
+2026-06-03 20:21:14 [INFO    ] framework.assertion: ���� 1 ��: 1 ͨ��, 0 ʧ��
+PASSED                                                                   [ 83%]
+tests/framework/test_assertion.py::TestAssertResponse::test_response_time_assertion 
+-------------------------------- live log call --------------------------------
+2026-06-03 20:21:14 [INFO    ] framework.assertion: ���� 1 ��: 1 ͨ��, 0 ʧ��
+PASSED                                                                   [ 83%]
+tests/framework/test_assertion.py::TestAssertResponse::test_body_size_assertion 
+-------------------------------- live log call --------------------------------
+2026-06-03 20:21:14 [INFO    ] framework.assertion: ���� 1 ��: 1 ͨ��, 0 ʧ��
+PASSED                                                                   [ 84%]
+tests/framework/test_assertion.py::TestAssertResponse::test_header_assertion 
+-------------------------------- live log call --------------------------------
+2026-06-03 20:21:14 [INFO    ] framework.assertion: ���� 1 ��: 1 ͨ��, 0 ʧ��
+PASSED                                                                   [ 85%]
+tests/framework/test_assertion.py::TestAssertResponse::test_unknown_operator_returns_failure 
+-------------------------------- live log call --------------------------------
+2026-06-03 20:21:14 [WARNING ] framework.assertion: \u65ad\u8a00\u5931\u8d25: \u274c FAIL | status_code | unknown_op | expected=200 | actual=200\n2026-06-03 20:21:14 [INFO    ] framework.assertion: ���� 1 ��: 0 ͨ��, 1 ʧ��
+PASSED                                                                   [ 85%]
+tests/framework/test_assertion.py::TestAssertResponse::test_multiple_assertions_mixed_results 
+-------------------------------- live log call --------------------------------
+2026-06-03 20:21:14 [WARNING ] framework.assertion: \u65ad\u8a00\u5931\u8d25: \u274c FAIL | status_code | eq | expected=404 | actual=200\n2026-06-03 20:21:14 [INFO    ] framework.assertion: ���� 3 ��: 2 ͨ��, 1 ʧ��
+PASSED                                                                   [ 86%]
+tests/framework/test_assertion.py::TestAssertResponse::test_custom_operator_used_in_assert_response 
+-------------------------------- live log call --------------------------------
+2026-06-03 20:21:14 [INFO    ] framework.assertion: ���� 1 ��: 1 ͨ��, 0 ʧ��
+PASSED                                                                   [ 87%]
+tests/framework/test_assertion.py::TestAssertResponse::test_empty_assertions_list 
+-------------------------------- live log call --------------------------------
+2026-06-03 20:21:14 [INFO    ] framework.assertion: ���� 0 ��: 0 ͨ��, 0 ʧ��
+PASSED                                                                   [ 87%]
+tests/framework/test_assertion.py::TestAssertResponse::test_length_operator_in_assert_response 
+-------------------------------- live log call --------------------------------
+2026-06-03 20:21:14 [INFO    ] framework.assertion: ���� 1 ��: 1 ͨ��, 0 ʧ��
+PASSED                                                                   [ 88%]
+tests/framework/test_assertion.py::TestAssertResponse::test_between_operator_in_assert_response 
+-------------------------------- live log call --------------------------------
+2026-06-03 20:21:14 [INFO    ] framework.assertion: ���� 1 ��: 1 ͨ��, 0 ʧ��
+PASSED                                                                   [ 88%]
+tests/framework/test_assertion.py::TestInstanceIsolation::test_multiple_instances_with_different_custom_operators PASSED [ 89%]
+tests/framework/test_assertion.py::TestInstanceIsolation::test_override_same_operator_differently PASSED [ 90%]
+tests/framework/test_assertion.py::TestInstanceIsolation::test_instances_do_not_share_custom_registrations PASSED [ 90%]
+tests/framework/test_assertion.py::TestConcurrency::test_concurrent_registrations_do_not_interfere PASSED [ 91%]
+tests/framework/test_assertion.py::TestConcurrency::test_concurrent_assertions_on_same_engine 
+-------------------------------- live log call --------------------------------
+2026-06-03 20:21:14 [INFO    ] framework.assertion: ���� 3 ��: 3 ͨ��, 0 ʧ��
+2026-06-03 20:21:14 [INFO    ] framework.assertion: ���� 3 ��: 3 ͨ��, 0 ʧ��
+2026-06-03 20:21:14 [INFO    ] framework.assertion: ���� 3 ��: 3 ͨ��, 0 ʧ��
+2026-06-03 20:21:14 [INFO    ] framework.assertion: ���� 3 ��: 3 ͨ��, 0 ʧ��
+2026-06-03 20:21:14 [INFO    ] framework.assertion: ���� 3 ��: 3 ͨ��, 0 ʧ��
+2026-06-03 20:21:14 [INFO    ] framework.assertion: ���� 3 ��: 3 ͨ��, 0 ʧ��
+2026-06-03 20:21:14 [INFO    ] framework.assertion: ���� 3 ��: 3 ͨ��, 0 ʧ��
+2026-06-03 20:21:14 [INFO    ] framework.assertion: ���� 3 ��: 3 ͨ��, 0 ʧ��
+2026-06-03 20:21:14 [INFO    ] framework.assertion: ���� 3 ��: 3 ͨ��, 0 ʧ��
+2026-06-03 20:21:14 [INFO    ] framework.assertion: ���� 3 ��: 3 ͨ��, 0 ʧ��
+2026-06-03 20:21:14 [INFO    ] framework.assertion: ���� 3 ��: 3 ͨ��, 0 ʧ��
+2026-06-03 20:21:14 [INFO    ] framework.assertion: ���� 3 ��: 3 ͨ��, 0 ʧ��
+2026-06-03 20:21:14 [INFO    ] framework.assertion: ���� 3 ��: 3 ͨ��, 0 ʧ��
+2026-06-03 20:21:14 [INFO    ] framework.assertion: ���� 3 ��: 3 ͨ��, 0 ʧ��
+2026-06-03 20:21:14 [INFO    ] framework.assertion: ���� 3 ��: 3 ͨ��, 0 ʧ��
+2026-06-03 20:21:14 [INFO    ] framework.assertion: ���� 3 ��: 3 ͨ��, 0 ʧ��
+2026-06-03 20:21:14 [INFO    ] framework.assertion: ���� 3 ��: 3 ͨ��, 0 ʧ��
+2026-06-03 20:21:14 [INFO    ] framework.assertion: ���� 3 ��: 3 ͨ��, 0 ʧ��
+2026-06-03 20:21:14 [INFO    ] framework.assertion: ���� 3 ��: 3 ͨ��, 0 ʧ��
+2026-06-03 20:21:14 [INFO    ] framework.assertion: ���� 3 ��: 3 ͨ��, 0 ʧ��
+PASSED                                                                   [ 92%]
+tests/framework/test_assertion.py::TestConcurrency::test_concurrent_read_write_no_keyerror PASSED [ 92%]
+tests/framework/test_assertion.py::TestConcurrency::test_concurrent_multi_engine_custom_operators PASSED [ 93%]
+tests/framework/test_assertion.py::TestAssertItemPurity::test_assert_item_is_dataclass PASSED [ 94%]
+tests/framework/test_assertion.py::TestAssertItemPurity::test_assert_item_has_no_operator_mapping PASSED [ 94%]
+tests/framework/test_assertion.py::TestDeepCopyIndependence::test_modifying_instance_does_not_affect_default PASSED [ 95%]
+tests/framework/test_assertion.py::TestDeepCopyIndependence::test_deepcopy_creates_independent_dict PASSED [ 96%]
+tests/framework/test_assertion.py::TestDeepCopyIndependence::test_copy_deepcopy_used PASSED [ 96%]
+tests/framework/test_assertion.py::TestDeepCopyIndependence::test_new_instance_has_all_defaults_eq_behavior PASSED [ 97%]
+tests/framework/test_assertion.py::TestAssertionReport::test_all_passed PASSED [ 98%]
+tests/framework/test_assertion.py::TestAssertionReport::test_some_failed PASSED [ 98%]
+tests/framework/test_assertion.py::TestAssertionReport::test_empty_results PASSED [ 99%]
+tests/framework/test_assertion.py::TestAssertionReport::test_summary_format PASSED [100%]
+
+============================== warnings summary ===============================
+framework\models.py:204
+  C:\private\aibuilder\api-test-framework\framework\models.py:204: PytestCollectionWarning: cannot collect test class 'TestCase' because it has a __init__ constructor (from: tests/framework/test_runner.py)
+    @dataclass
+
+framework\runner.py:36
+  C:\private\aibuilder\api-test-framework\framework\runner.py:36: PytestCollectionWarning: cannot collect test class 'TestRunner' because it has a __init__ constructor (from: tests/framework/test_runner.py)
+    class TestRunner:
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+======================= 154 passed, 2 warnings in 0.79s =======================

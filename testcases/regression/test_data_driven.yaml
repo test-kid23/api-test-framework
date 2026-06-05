@@ -1,0 +1,37 @@
+# 回归测试 — 数据驱动
+name: 数据驱动测试示例
+description: 一个用例模板 + 多组参数批量执行
+base_url: "{{env.base_url}}"
+tags: [regression, data_driven]
+
+data_driven:
+  parameters:
+    - username: user1
+      role: admin
+      expect_status: 200
+    - username: user2
+      role: viewer
+      expect_status: 200
+    - username: user3
+      role: editor
+      expect_status: 200
+
+cases:
+  - name: "用户创建 - {{username}}"
+    description: 使用数据驱动方式批量创建用户
+    tags: [P1, crud]
+    variables:
+      username: "{{username}}"
+      role: "{{role}}"
+    request:
+      method: POST
+      path: /post
+      body:
+        username: "{{username}}"
+        role: "{{role}}"
+        created_at: "{{now()}}"
+    expect:
+      status_code: "{{expect_status}}"
+      jsonpath:
+        $.json.username: "{{username}}"
+        $.json.role: "{{role}}"

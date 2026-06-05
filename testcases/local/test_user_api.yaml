@@ -1,0 +1,157 @@
+# 本地用户服务接口测试 — 基于 127.0.0.1:8011
+name: 本地用户服务接口测试
+description: |
+  测试本地启动的用户 CRUD 接口。
+  流程：登录获取 JWT Token → 用 Token 访问四个业务接口 → 验证未授权场景。
+  运行命令：python -m pytest testcases/local/test_user_api.yaml --env local
+base_url: "{{env.base_url}}"
+tags: [local, crud, auth]
+
+variables:
+  test_name: "api_test_user"
+  test_age: 25
+
+cases:
+  - name: 登录获取 JWT Token
+    description: 调用 /api/login 获取 access_token，供后续用例使用
+    tags: [auth, login, P0]
+    priority: P0
+    request:
+      method: POST
+      path: /api/login
+      body:
+        username: "{{env.admin_user}}"
+        password: "{{env.admin_pass}}"
+    expect:
+      status_code: 200
+      jsonpath:
+        $.code:
+          operator: eq
+          value: 200
+        $.msg: "登录成功"
+        $.data.access_token:
+          operator: matches
+          value: ".+"
+        $.data.token_type: "Bearer"
+    extract:
+      access_token: $.data.access_token
+
+  - name: GET 查询默认用户
+    description: 不带 user_id 参数，获取默认用户信息
+    tags: [get, crud, P0]
+    priority: P0
+    request:
+      method: GET
+      path: /api/user
+      headers:
+        Authorization: "Bearer {{access_token}}"
+    expect:
+      status_code: 200
+      jsonpath:
+        $.code:
+          operator: eq
+          value: 200
+
+  - name: GET 查询指定用户
+    description: 通过 user_id 查询指定用户信息
+    tags: [get, crud, P0]
+    priority: P0
+    request:
+      method: GET
+      path: /api/user
+      headers:
+        Authorization: "Bearer {{access_token}}"
+      params:
+        user_id: 1
+    expect:
+      status_code: 200
+      jsonpath:
+        $.code:
+          operator: eq
+          value: 200
+
+  - name: POST 新增用户
+    description: 创建一个新用户
+    tags: [post, crud, P0]
+    priority: P0
+    request:
+      method: POST
+      path: /api/user
+      headers:
+        Authorization: "Bearer {{access_token}}"
+      body:
+        name: "{{test_name}}"
+        age: "{{test_age}}"
+    expect:
+      status_code: 200
+      jsonpath:
+        $.code:
+          operator: eq
+          value: 200
+
+  - name: PUT 更新用户
+    description: 更新用户名称
+    tags: [put, crud, P0]
+    priority: P0
+    request:
+      method: PUT
+      path: /api/user
+      headers:
+        Authorization: "Bearer {{access_token}}"
+      body:
+        name: "updated_name"
+    expect:
+      status_code: 200
+      jsonpath:
+        $.code:
+          operator: eq
+          value: 200
+
+  - name: DELETE 删除用户
+    description: 删除指定用户
+    tags: [delete, crud, P0]
+    priority: P0
+    request:
+      method: DELETE
+      path: /api/user
+      headers:
+        Authorization: "Bearer {{access_token}}"
+      params:
+        user_id: 1
+    expect:
+      status_code: 200
+      jsonpath:
+        $.code:
+          operator: eq
+          value: 200
+
+  - name: 未授权访问 GET 接口
+    description: 不带 Authorization 访问业务接口应返回 401
+    tags: [security, auth, P1]
+    priority: P1
+    request:
+      method: GET
+      path: /api/user
+    expect:
+      status_code: 401
+      jsonpath:
+        $.detail:
+          operator: matches
+          value: ".*"
+
+  - name: 未授权访问 POST 接口
+    description: 不带 Authorization 访问 POST 接口应返回 401
+    tags: [security, auth, P1]
+    priority: P1
+    request:
+      method: POST
+      path: /api/user
+      body:
+        name: "test"
+        age: 1
+    expect:
+      status_code: 401
+      jsonpath:
+        $.detail:
+          operator: matches
+          value: ".*"

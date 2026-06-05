@@ -1,0 +1,34 @@
+stages:
+  - test
+  - report
+
+variables:
+  PIP_CACHE_DIR: "$CI_PROJECT_DIR/.cache/pip"
+
+cache:
+  paths:
+    - .cache/pip/
+
+api-test:
+  stage: test
+  image: python:3.12
+  variables:
+    ENV: staging
+  before_script:
+    - pip install -r requirements.txt
+  script:
+    - pytest --env=$ENV -m "smoke" -n auto --alluredir=reports/allure-results -v
+  artifacts:
+    when: always
+    paths:
+      - reports/allure-results/
+    expire_in: 30 days
+
+allure-report:
+  stage: report
+  image: frankescobar/allure-docker-service
+  script:
+    - allure generate reports/allure-results -o reports/allure-report
+  artifacts:
+    paths:
+      - reports/allure-report/

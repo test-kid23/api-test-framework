@@ -1,0 +1,68 @@
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.backends._legacy:_Backend"
+
+[project]
+name = "auto-test-framework"
+version = "1.0.0"
+description = "企业级 API 自动化测试框架"
+requires-python = ">=3.10"
+
+[tool.black]
+line-length = 100
+target-version = ["py312"]
+
+[tool.isort]
+profile = "black"
+line_length = 100
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+ignore_missing_imports = true
+exclude = ["build/", "dist/", ".venv/", "__pycache__/", "tests/", "doc/"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "N", "W"]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+
+[tool.pytest.ini_options]
+testpaths = ["testcases"]
+addopts = "-v --tb=short --strict-markers"
+markers = [
+    "smoke: 冒烟测试",
+    "regression: 回归测试",
+    "P0: 最高优先级",
+    "P1: 高优先级",
+    "P2: 中优先级",
+    "websocket: WebSocket 测试",
+    "db: 数据库测试",
+    "http: HTTP 方法测试",
+    "get: GET 请求",
+    "post: POST 请求",
+    "put: PUT 请求",
+    "delete: DELETE 请求",
+    "performance: 性能测试",
+    "headers: 响应头断言",
+    "extract: 变量提取",
+    "regex: 正则匹配",
+    "status: 状态码测试",
+    "auth: 认证测试",
+    "login: 登录流程",
+    "protected: 受保护接口",
+    "security: 安全测试",
+    "data_driven: 数据驱动测试",
+    "crud: 增删改查",
+    "local: 本地接口测试",
+]
+log_cli = true
+log_cli_level = "INFO"
+log_cli_format = "%(asctime)s [%(levelname)-8s] %(name)s: %(message)s"
+log_cli_date_format = "%Y-%m-%d %H:%M:%S"
