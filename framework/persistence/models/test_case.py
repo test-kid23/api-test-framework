@@ -8,6 +8,8 @@
 - priority: 优先级（P0/P1/P2/P3）
 - created_at / updated_at: 时间戳
 - version: 版本号（乐观锁 / 历史追踪）
+- source_file: 来源 YAML 文件路径（用于 YAML ↔ DB 双向同步）
+- suite_name: 所属套件名称（用于导出时重建套件结构）
 """
 
 from __future__ import annotations
@@ -62,6 +64,16 @@ class TestCaseModel(Base):
         nullable=False,
         default="active",
         comment="状态: active/archived",
+    )
+    source_file: Mapped[str | None] = mapped_column(
+        String(512),
+        nullable=True,
+        comment="来源 YAML 文件路径（用于同步追踪）",
+    )
+    suite_name: Mapped[str | None] = mapped_column(
+        String(255),
+        nullable=True,
+        comment="所属套件名称（用于导出重建）",
     )
     version: Mapped[int] = mapped_column(
         Integer,

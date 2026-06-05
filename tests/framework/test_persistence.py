@@ -11,8 +11,13 @@ from framework.persistence.repositories import CaseRepository
 async def test_create_and_query_case():
     """验证：创建用例 → 查询 → 删除 全流程"""
     engine = create_async_engine(
-        {"driver": "sqlite", "database": "data/autotest.db"}, echo=False
+        {"driver": "sqlite", "database": ":memory:"}, echo=False
     )
+    # 确保表已创建（包含新字段 source_file / suite_name）
+    from framework.persistence.models.base import Base
+
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
     session_factory = create_async_session_factory(engine)
 
     async with session_factory() as session:

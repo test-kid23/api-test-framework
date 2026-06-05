@@ -35,6 +35,8 @@ dependencies = [
     # ── API Server ──
     "fastapi>=0.115.0",
     "uvicorn[standard]>=0.30.0",
+    # ── CLI ──
+    "typer>=0.15.0",
     # ── Utilities ──
     "colorama>=0.4.6",
 ]
@@ -80,6 +82,9 @@ all = [
     "watchdog>=4.0.0",
     "pip-tools>=7.4.0",
 ]
+
+[project.scripts]
+autotest = "cli:app"
 
 [tool.setuptools.packages.find]
 include = ["framework*", "assertions*", "api*"]

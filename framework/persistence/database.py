@@ -102,14 +102,17 @@ def create_async_engine(
     if "aiosqlite" in url:
         connect_args["check_same_thread"] = False
 
-    engine = _create_async_engine(
-        url,
-        echo=echo,
-        connect_args=connect_args,
-        pool_pre_ping=db_config.get("pool_pre_ping", True),
-        pool_size=db_config.get("pool_size", 5),
-        max_overflow=db_config.get("max_overflow", 10),
-    )
+    # SQLite 不支持 pool_size/max_overflow，仅对非 SQLite 设置
+    engine_kwargs: dict[str, Any] = {
+        "echo": echo,
+        "connect_args": connect_args,
+        "pool_pre_ping": db_config.get("pool_pre_ping", True),
+    }
+    if "aiosqlite" not in url:
+        engine_kwargs["pool_size"] = db_config.get("pool_size", 5)
+        engine_kwargs["max_overflow"] = db_config.get("max_overflow", 10)
+
+    engine = _create_async_engine(url, **engine_kwargs)
     return engine
 
 
