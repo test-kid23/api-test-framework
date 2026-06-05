@@ -12,7 +12,7 @@ from framework.context import TestContext
 from framework.executors.base import StepExecutor
 from framework.extractor import Extractor
 from framework.models import CaseResult, EnvConfig, HttpRequest, TestCase
-from framework.report import AllureAdapter
+from framework.report.base import ReportAdapter
 from framework.utils.logger import Logger
 from framework.utils.template import TemplateEngine
 
@@ -24,9 +24,11 @@ class HttpStepExecutor(StepExecutor):
 
     负责：
     1. 模板渲染请求参数
-    2. 发送 HTTP 请求
-    3. 执行响应断言
-    4. 提取变量
+    2. 通过插件链处理请求（on_request）
+    3. 发送 HTTP 请求
+    4. 通过插件链处理响应（on_response）
+    5. 执行响应断言 → 插件钩子 on_assertion
+    6. 提取变量 → 插件钩子 on_extract
     """
 
     def __init__(
@@ -35,15 +37,17 @@ class HttpStepExecutor(StepExecutor):
         template_engine: TemplateEngine,
         assertion_engine: AssertionEngine,
         extractor: Extractor,
-        allure: AllureAdapter,
+        report_adapter: ReportAdapter,
         env: EnvConfig,
+        plugin_manager: Any = None,  # PluginManager
     ) -> None:
         self._http_client = http_client
         self._template = template_engine
         self._assertion_engine = assertion_engine
         self._extractor = extractor
-        self._allure = allure
+        self._report_adapter = report_adapter
         self._env = env
+        self._plugin_manager = plugin_manager
 
     # ── StepExecutor 接口 ──────────────────────────────
 
@@ -75,16 +79,29 @@ class HttpStepExecutor(StepExecutor):
         context.set_request(rendered_req)
         context.set_url(full_url)
 
-        # Allure 附加请求信息
-        self._allure.attach_request(rendered_req, full_url)
+        # 报告附加请求信息
+        self._report_adapter.attach_request(rendered_req, full_url)
+
+        # ── 插件链：on_request ──
+        if self._plugin_manager:
+            rendered_req = self._plugin_manager.dispatch_chain(
+                "request", chain_value=rendered_req
+            )
 
         # 发送请求
         response = self._http_client.request(rendered_req, variables)
         case_result.response = response
         context.set_response(response)
 
-        # Allure 附加响应信息
-        self._allure.attach_response(response)
+        # ── 插件链：on_response ──
+        if self._plugin_manager:
+            response = self._plugin_manager.dispatch_chain(
+                "response", chain_value=response
+            )
+            case_result.response = response
+
+        # 报告附加响应信息
+        self._report_adapter.attach_response(response)
 
         # 执行断言
         if case.assertions:
@@ -92,7 +109,13 @@ class HttpStepExecutor(StepExecutor):
                 response, case.assertions, variables
             )
             case_result.assertion_report = assertion_report
-            self._allure.attach_assertions(assertion_report)
+            self._report_adapter.attach_assertions(assertion_report)
+
+            # ── 插件钩子：on_assertion ──
+            if self._plugin_manager:
+                self._plugin_manager.dispatch(
+                    "assertion", case=case, report=assertion_report
+                )
 
             if not assertion_report.passed:
                 case_result.passed = False
@@ -103,7 +126,14 @@ class HttpStepExecutor(StepExecutor):
             extracted = self._extractor.extract(response, case.extracts, variables)
             case_result.extracted_vars.update(extracted)
             context.get_variables().update(extracted)
-            logger.info(f"提取变量: {list(extracted.keys())}")
+
+            # ── 插件钩子：on_extract ──
+            if self._plugin_manager:
+                self._plugin_manager.dispatch(
+                    "extract", case=case, extracted=extracted
+                )
+
+            logger.info("variables_extracted", var_names=list(extracted.keys()))
 
         return case_result
 

@@ -9,6 +9,19 @@ cache:
   paths:
     - .cache/pip/
 
+unit-test:
+  stage: test
+  image: python:3.12
+  before_script:
+    - pip install -r requirements.txt
+  script:
+    - pytest tests/ --cov=framework --cov-report=term --cov-report=html:reports/coverage -v
+  artifacts:
+    when: always
+    paths:
+      - reports/coverage/
+    expire_in: 30 days
+
 api-test:
   stage: test
   image: python:3.12
@@ -17,7 +30,7 @@ api-test:
   before_script:
     - pip install -r requirements.txt
   script:
-    - pytest --env=$ENV -m "smoke" -n auto --alluredir=reports/allure-results -v
+    - pytest testcases/ --env=$ENV -m "smoke" -n auto --alluredir=reports/allure-results -v
   artifacts:
     when: always
     paths:

@@ -5,6 +5,10 @@
 
 from __future__ import annotations
 
+from typing import Any
+
+from pydantic import ValidationError
+
 
 class AutoTestException(Exception):  # noqa: N818
     """AutoTest Framework 异常基类
@@ -48,26 +52,58 @@ class ConfigValidationError(ConfigError):
     """配置 Schema 校验失败
 
     Attributes:
-        field_path: 校验失败的字段路径。
-        expected: 期望的类型或格式。
-        actual: 实际值。
+        errors: Pydantic 校验错误列表，每项含 loc / msg / type / input。
+        field_path: (单字段模式) 校验失败的字段路径。
+        expected: (单字段模式) 期望的类型或格式。
+        actual: (单字段模式) 实际值。
     """
 
     def __init__(
         self,
-        field_path: str,
-        expected: str,
-        actual: object,
+        field_path_or_errors: str | list[dict[str, Any]],
+        expected: str = "",
+        actual: object = None,
         *,
         trace_id: str = "",
     ) -> None:
-        super().__init__(
-            f"配置校验失败 [{field_path}]: 期望 {expected}, 实际 {actual!r}",
-            trace_id=trace_id,
-        )
-        self.field_path = field_path
-        self.expected = expected
-        self.actual = actual
+        if isinstance(field_path_or_errors, list):
+            # 批量错误模式（from pydantic）
+            self.errors: list[dict[str, Any]] = field_path_or_errors
+            self.field_path = ""
+            self.expected = ""
+            self.actual = None
+            lines = ["配置校验失败:"]
+            for err in self.errors:
+                loc = ".".join(str(p) for p in err.get("loc", []))
+                msg = err.get("msg", "未知错误")
+                expected_type = err.get("type", "")
+                lines.append(f"  - {loc}: {msg} (type={expected_type})")
+            super().__init__("\n".join(lines), trace_id=trace_id)
+        else:
+            # 单字段模式
+            self.errors = []
+            self.field_path = field_path_or_errors
+            self.expected = expected
+            self.actual = actual
+            super().__init__(
+                f"配置校验失败 [{self.field_path}]: 期望 {expected}, 实际 {actual!r}",
+                trace_id=trace_id,
+            )
+
+    @classmethod
+    def from_pydantic(cls, exc: ValidationError) -> ConfigValidationError:
+        """从 Pydantic ValidationError 构造"""
+        errors: list[dict[str, Any]] = []
+        for e in exc.errors():
+            errors.append(
+                {
+                    "loc": e.get("loc", []),
+                    "msg": e.get("msg", ""),
+                    "type": e.get("type", ""),
+                    "input": e.get("input", None),
+                }
+            )
+        return cls(errors)
 
 
 # ==================== 执行异常 ====================

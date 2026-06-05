@@ -77,14 +77,15 @@ class FixtureLoader:
         """执行 setup 动作，返回提取的变量"""
         extracted: dict[str, Any] = {}
         for i, action in enumerate(actions):
-            logger.info(f"执行 setup [{i + 1}/{len(actions)}]: {action.action_type}")
+            logger.info("setup_action_starting", index=i + 1, total=len(actions),
+                        action_type=action.action_type)
             try:
                 result = self._execute_action(action, variables)
                 if result:
                     extracted.update(result)
                     variables.update(result)
             except Exception as e:
-                logger.error(f"setup 执行失败: {action.action_type} - {e}")
+                logger.error("setup_action_failed", action_type=action.action_type, error=str(e))
                 raise
         return extracted
 
@@ -95,11 +96,12 @@ class FixtureLoader:
     ) -> None:
         """执行 teardown 动作"""
         for i, action in enumerate(actions):
-            logger.info(f"执行 teardown [{i + 1}/{len(actions)}]: {action.action_type}")
+            logger.info("teardown_action_starting", index=i + 1, total=len(actions),
+                        action_type=action.action_type)
             try:
                 self._execute_action(action, variables)
             except Exception as e:
-                logger.warning(f"teardown 执行失败（忽略）: {action.action_type} - {e}")
+                logger.warning("teardown_action_failed", action_type=action.action_type, error=str(e))
 
     def _execute_action(
         self,
@@ -119,7 +121,7 @@ class FixtureLoader:
             self._execute_shell(config, variables)
             return None
         else:
-            logger.warning(f"未知的 fixture 动作类型: {action.action_type}")
+            logger.warning("unknown_fixture_action", action_type=action.action_type)
             return None
 
     def _execute_api_call(
@@ -173,7 +175,7 @@ class FixtureLoader:
     ) -> dict[str, Any]:
         """执行数据库操作"""
         if self._db_executor is None:
-            logger.warning("DBExecutor 未初始化，跳过数据库操作")
+            logger.warning("db_skipped", reason="DBExecutor not initialized")
             return {}
 
         from framework.models import DBAction, ExtractItem
@@ -204,7 +206,7 @@ class FixtureLoader:
     def _execute_wait(config: dict[str, Any]) -> None:
         """等待指定秒数"""
         seconds = config.get("seconds", 1)
-        logger.debug(f"等待 {seconds} 秒")
+        logger.debug("waiting", seconds=seconds)
         time.sleep(seconds)
         return None
 
@@ -282,9 +284,9 @@ class FixtureLoader:
                 timeout=timeout,
             )
             if result.returncode != 0:
-                logger.warning(f"Shell 命令返回非零: {result.returncode}\n{result.stderr}")
+                logger.warning("shell_nonzero_exit", returncode=result.returncode, stderr=result.stderr.strip())
             else:
-                logger.debug(f"Shell 输出: {result.stdout[:500]}")
+                logger.debug("shell_output", stdout=result.stdout[:500])
         except subprocess.TimeoutExpired:
             logger.error(f"Shell 命令超时 ({timeout}s): {command}")
             raise

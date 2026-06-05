@@ -1,96 +1,24 @@
-# AutoTest Framework 开发计划
+# AutoTest Framework 开发计划（第二版）
 
-> **计划版本**: 1.1（已根据评审反馈调整）  
-> **制定日期**: 2026-06-03  
-> **修订日期**: 2026-06-03  
-> **关联文档**: [架构评审报告](./architecture-review.md)  
-> **目标版本**: 1.0.0 → 3.0.0（分阶段交付）  
-> **技术栈基线**: Python 3.12 | pytest 8.x | httpx 0.28.x | Pydantic 2.10.x
+> **计划版本**: 2.0  
+> **制定日期**: 2026-06-05  
+> **修订日期**: 2026-06-05  
+> **关联文档**: [架构评审报告 v2](./architecture-review.md)  
+> **当前版本**: v1.2.0（Phase 0a/0b/1 已完成）  
+> **目标版本**: v1.2.0 → v3.0.0（分阶段交付）  
+> **技术栈基线**: Python 3.12 | pytest 8.x | httpx 0.28.x | Pydantic 2.10.x | structlog 24.4.x
 
 ---
 
 ## 目录
 
-1. [技术栈版本锁定](#0-技术栈版本锁定)
-2. [总览与进度追踪](#1-总览与进度追踪)
-3. [Phase 0a: 安全止血（1周）](#phase-0a-安全止血)
-4. [Phase 0b: 工程化加固（1周）](#phase-0b-工程化加固)
-5. [Phase 1: 架构解耦与核心重构（3-4周）](#phase-1-架构解耦与核心重构)
-6. [Phase 2: 引擎服务化与持久化（4周）](#phase-2-引擎服务化与持久化)
-7. [Phase 3: 平台化基础建设（4周）](#phase-3-平台化基础建设)
-8. [Phase 4: 完整测试平台（6周）](#phase-4-完整测试平台)
-9. [附录: 文件结构变更总览](#附录-文件结构变更总览)
-10. [修订记录](#修订记录)
-
----
-
-## 0. 技术栈版本锁定
-
-### 运行时
-
-| 组件 | 锁定版本 | 说明 |
-|------|---------|------|
-| **Python** | **3.12.3+** | 使用 3.12 新特性（`type` 语句、PEP 695 泛型语法等） |
-| **pytest** | **8.3.x** | 核心测试框架，固定 8.x 大版本 |
-| httpx | 0.28.1 | HTTP/2 支持，连接池复用 |
-| PyYAML | 6.0.2 | YAML 解析（C 扩展加速） |
-| Jinja2 | 3.1.4 | 模板引擎（修复 CVE 安全版本） |
-| jsonpath-ng | 1.7.0 | JSONPath 表达式解析 |
-| pydantic | 2.10.6 | 数据模型与配置校验 |
-
-### 报告
-
-| 组件 | 锁定版本 | 说明 |
-|------|---------|------|
-| allure-pytest | 2.13.5 | Allure 报告集成 |
-| pytest-html | 4.1.1 | HTML 报告备选 |
-
-### 执行增强
-
-| 组件 | 锁定版本 | 说明 |
-|------|---------|------|
-| pytest-xdist | 3.6.1 | 多进程并行执行 |
-| pytest-rerunfailures | 14.0 | 失败重试 |
-| pytest-timeout | 2.3.1 | 用例级超时控制（新增） |
-
-### 数据库（可选依赖 extra: db）
-
-| 组件 | 锁定版本 | 说明 |
-|------|---------|------|
-| SQLAlchemy | 2.0.36 | ORM / Core |
-| pymysql | 1.1.1 | MySQL 驱动 |
-| psycopg2-binary | 2.9.10 | PostgreSQL 驱动 |
-| aiosqlite | 0.20.0 | 异步 SQLite（新增，用于本地持久化） |
-
-### WebSocket（可选依赖 extra: ws）
-
-| 组件 | 锁定版本 | 说明 |
-|------|---------|------|
-| websockets | 13.1 | WebSocket 客户端 |
-
-### 平台化新增（Phase 2+）
-
-| 组件 | 锁定版本 | 用途 | 引入阶段 |
-|------|---------|------|---------|
-| fastapi | 0.115.x | REST API 服务 | Phase 2 |
-| uvicorn | 0.34.0 | ASGI 服务器 | Phase 2 |
-| celery | 5.4.0 | 分布式任务队列 | Phase 3 |
-| redis | 5.2.0 | 消息代理 + 缓存 | Phase 3 |
-| SQLAlchemy[asyncio] | 2.0.36 | 异步 ORM | Phase 2 |
-| alembic | 1.14.0 | 数据库迁移版本管理 | Phase 2 |
-| structlog | 24.4.0 | 结构化日志 | Phase 1 |
-
-### 开发工具链（不进入生产依赖）
-
-| 组件 | 锁定版本 | 用途 |
-|------|---------|------|
-| black | 24.10.0 | 代码格式化 |
-| isort | 5.13.2 | import 排序 |
-| mypy | 1.13.0 | 静态类型检查 |
-| ruff | 0.8.0 | 快速 Linter（替代 flake8） |
-| pre-commit | 4.0.1 | Git hooks 管理 |
-| pytest-cov | 6.0.0 | 代码覆盖率 |
-| safety | 3.2.x | 依赖安全扫描 |
+1. [总览与进度追踪](#1-总览与进度追踪)
+2. [已完成阶段回顾](#2-已完成阶段回顾)
+3. [Phase 2: 引擎服务化与持久化（4周）](#phase-2-引擎服务化与持久化)
+4. [Phase 3: 平台化基础建设（4周）](#phase-3-平台化基础建设)
+5. [Phase 4: 完整测试平台（6周）](#phase-4-完整测试平台)
+6. [附录: 文件结构变更总览](#附录-文件结构变更总览)
+7. [修订记录](#修订记录)
 
 ---
 
@@ -100,287 +28,67 @@
 
 ```
 v1.0.0 ──→ v1.0.1 ──→ v1.1.0 ──→ v1.2.0 ──→ v2.0.0 ──→ v2.1.0 ──→ v3.0.0
- (当前)  Phase 0a   Phase 0b   Phase 1    Phase 2    Phase 3    Phase 4
- 6.93分  安全止血   工程化加固   架构解耦    引擎服务化  平台基础    完整平台
-                             +核心重构    +持久化    分布式+调度  全功能
+ (起点)  Phase 0a   Phase 0b   Phase 1    Phase 2    Phase 3    Phase 4
+ 6.93分  安全止血   工程化加固  架构解耦    引擎服务化  平台基础    完整平台
+ ✅✅✅   ✅         ✅          ✅          +持久化     分布式+调度  全功能
+                                                            8.22分→
 ```
 
 ### 总进度看板
 
-| 阶段 | 状态 | 开始日期 | 预计完成 | 实际完成 | 任务数 |
-|------|------|---------|---------|---------|--------|
-| Phase 0a | ⬜ 未开始 | — | — | — | 4 |
-| Phase 0b | ⬜ 未开始 | — | — | — | 3 |
-| Phase 1 | ⬜ 未开始 | — | — | — | 10 |
-| Phase 2 | ⬜ 未开始 | — | — | — | 8 |
-| Phase 3 | ⬜ 未开始 | — | — | — | 6 |
-| Phase 4 | ⬜ 未开始 | — | — | — | 8 |
-| **合计** | **0 / 39** | | | | 39 |
+| 阶段 | 状态 | 开始日期 | 完成日期 | 任务数 |
+|------|------|---------|---------|--------|
+| Phase 0a: 安全止血 | ✅ 已完成 | 2026-06-03 | 2026-06-04 | 4 |
+| Phase 0b: 工程化加固 | ✅ 已完成 | 2026-06-04 | 2026-06-05 | 3 |
+| Phase 1: 架构解耦与核心重构 | ✅ 已完成 | 2026-06-05 | 2026-06-05 | 10 |
+| Phase 2: 引擎服务化与持久化 | ⬜ 未开始 | — | — | 8 |
+| Phase 3: 平台化基础建设 | ⬜ 未开始 | — | — | 6 |
+| Phase 4: 完整测试平台 | ⬜ 未开始 | — | — | 8 |
+| **合计** | **17 / 39** | | | 39 |
 
 状态图例: ⬜ 未开始 | 🔄 进行中 | ✅ 已完成 | ❌ 已取消
 
 ---
 
-## Phase 0a: 安全止血
+## 2. 已完成阶段回顾
 
-**优先级**: 🔴 P0 - 紧急  
-**预计工期**: 1 周  
-**目标版本**: v1.0.1  
-**评审依据**: [架构评审 §8 安全性评审]  
-**设计原则**: 先止血，后加固。本阶段只处理有实际安全风险的 4 项，避免赶工遗漏。
+### Phase 0a: 安全止血 ✅
 
-> ⚠️ 本阶段完成后必须通过 `testcases/` 中现有用例的全量回归。
+**目标版本**: v1.0.1 | **状态**: 全部完成
 
-### 任务清单
+| 任务 | 完成内容 | 关键产出 |
+|------|---------|---------|
+| T0a-1: Shell 注入安全加固 | ✅ | 白名单 + shlex + 沙箱 + 超时；`SecurityError` 异常 |
+| T0a-2: 日志敏感信息脱敏 | ✅ | `SensitiveDataMasker` 类（10 字段 + 正则替换 + 可扩展） |
+| T0a-3: 断言操作符线程安全 | ✅ | `MappingProxyType` 不可变默认表 + 实例 deepcopy |
+| T0a-4: 配置 Schema 校验 | ✅ | `config_schema.py`（5 个 Pydantic 模型 + `ConfigValidationError`） |
 
-#### T0a-1: Shell 注入安全加固
-- **文件**: `framework/fixtures_loader.py`
-- **问题**: `subprocess.run` 直接执行用户输入的命令
-- **方案**: 
-  1. 新增 `AllowedCommands` 白名单配置
-  2. 对命令做参数解析 + 白名单校验
-  3. 增加命令执行超时（默认 30s）
-  4. 沙箱化执行（禁止网络操作、文件写入敏感路径）
-- **验收**: Shell 动作无法执行未注册命令，超时可控
+### Phase 0b: 工程化加固 ✅
 
-#### T0a-2: 日志敏感信息脱敏
-- **文件**: `framework/utils/logger.py`, 新增 `framework/utils/masker.py`
-- **问题**: 请求/响应原文包含 token、password 等敏感字段
-- **方案**:
-  1. 新增 `SensitiveDataMasker` 类
-  2. 内置脱敏规则: `Authorization`, `password`, `token`, `secret`, `api_key`, `Cookie`
-  3. 支持 `config.yaml` 中配置额外脱敏字段
-  4. 请求日志和响应日志自动脱敏
-  5. 脱敏逻辑独立成单独模块，便于单元测试
-- **验收**: 日志中不再出现明文 token / password；`tests/framework/utils/test_masker.py` 覆盖全部内置规则
+**目标版本**: v1.1.0 | **状态**: 全部完成
 
-#### T0a-3: 断言操作符线程安全
-- **文件**: `framework/assertion.py`
-- **问题**: `CLASS_VAR` 全局注册表在多 worker 并发时非线程安全
-- **方案**:
-  1. 将 `OPERATORS` 从 `ClassVar` 改为实例属性 `self._operators`
-  2. 构造函数中深拷贝默认注册表
-  3. `register_operator` 改为支持实例级注册
-  4. 保留类级别默认注册表作为 fallback
-- **验收**: pytest-xdist 4 workers 并发执行无断言注册冲突
+| 任务 | 完成内容 | 关键产出 |
+|------|---------|---------|
+| T0b-1: 工程化加固 | ✅ | `.pre-commit-config.yaml` + `pyproject.toml` 补充 + `.dockerignore` |
+| T0b-2: GitHub Actions 安全扫描 | ✅ | Safety + Bandit + Dependabot 配置 |
+| T0b-3: 容器化完善 | ✅ | Dockerfile 三层构建 + docker-compose 健康检查 + 非 root 用户 |
 
-#### T0a-4: 配置 Schema 校验
-- **文件**: `framework/config.py`, 新增 `framework/config_schema.py`
-- **问题**: 配置错误在运行时才能发现
-- **方案**:
-  1. 使用 Pydantic v2 定义 `HttpConfig`, `LoggingConfig`, `ReportConfig`, `ExecutionConfig`, `DBConfig` 模型
-  2. `ConfigLoader.load()` 返回时调用 `model_validate()`
-  3. 配置错误时给出明确字段路径和期望类型
-- **验收**: 错误配置在启动时报错而非运行时；`tests/framework/test_config.py` 覆盖常见配置错误场景
+### Phase 1: 架构解耦与核心重构 ✅
 
----
+**目标版本**: v1.2.0 | **状态**: 全部完成
 
-## Phase 0b: 工程化加固
-
-**优先级**: 🟡 P1 - 高  
-**预计工期**: 1 周  
-**目标版本**: v1.1.0  
-**评审依据**: [架构评审 §7 CI/CD 评审]  
-**前置条件**: Phase 0a 全部完成并通过回归测试
-
-### 任务清单
-
-#### T0b-1: 工程化加固
-- **文件**: 新增 `.pre-commit-config.yaml`, `pyproject.toml`（补充）, `.dockerignore`
-- **内容**:
-  1. 配置 pre-commit hooks: `ruff`, `black`, `isort`, `mypy`
-  2. `pyproject.toml` 增加 `[tool.black]`, `[tool.isort]`, `[tool.mypy]`, `[tool.ruff]` 配置
-  3. 新增 `.dockerignore`（排除 `__pycache__`, `.git`, `reports`, `logs`, `.venv`）
-  4. Dockerfile 优化：先 `COPY requirements.txt` + `pip install`，再 `COPY . .`
-- **验收**: `pre-commit run --all-files` 通过
-
-#### T0b-2: GitHub Actions 安全扫描
-- **文件**: `.github/workflows/test.yml`, 新增 `.github/dependabot.yml`
-- **内容**:
-  1. 增加 Dependabot 配置（pip 每周检查）
-  2. CI 增加 `safety check` 步骤
-  3. CI 增加 `bandit` 安全代码扫描
-- **验收**: CI pipeline 包含安全扫描步骤，且全部通过
-
-#### T0b-3: 容器化完善
-- **文件**: `Dockerfile`, `docker-compose.test.yml`
-- **内容**:
-  1. Dockerfile 改用多阶段构建（builder + runtime）
-  2. docker-compose 增加 db 服务（MySQL/PostgreSQL）和 mock 服务（可选）
-  3. 增加健康检查 `HEALTHCHECK`
-  4. 使用非 root 用户运行
-- **验收**: `docker compose up` 一键启动完整测试环境
-
----
-
-## Phase 1: 架构解耦与核心重构
-
-**优先级**: 🟡 P1 - 高  
-**预计工期**: 3-4 周（含回归测试缓冲）  
-**目标版本**: v1.2.0  
-**评审依据**: [架构评审 §5 解耦程度分析] + [§3.4 执行引擎] + [§3.11 报告模块] + [§3.12 插件系统]  
-**前置条件**: Phase 0b 全部完成
-
-> ⚠️ 本阶段涉及大量核心模块重构（执行引擎策略化、上下文改 contextvars、报告解耦），必须配合回归测试，确保不破坏已有功能。
-
-### 测试基础设施（Phase 1 前置）
-
-在开始重构前，先建立 `tests/` 目录结构：
-
-```
-tests/
-├── __init__.py
-├── conftest.py                    # 测试专用 fixtures
-├── framework/
-│   ├── __init__.py
-│   ├── test_assertion.py          # 断言引擎单元测试
-│   ├── test_extractor.py          # 提取器单元测试
-│   ├── test_runner.py             # 执行引擎单元测试
-│   ├── test_client.py             # HTTP 客户端单元测试
-│   ├── test_config.py             # 配置加载器单元测试
-│   ├── test_context.py            # 上下文管理单元测试
-│   ├── test_parser.py             # 解析器单元测试
-│   ├── utils/
-│   │   ├── test_template.py
-│   │   ├── test_masker.py
-│   │   └── test_retry.py
-│   └── plugins/
-│       └── test_auth_manager.py
-└── smoke/                         # 冒烟测试（每次重构后必跑）
-    └── test_all_existing_cases.py # 运行现有 testcases/ 全量用例
-```
-
-### 任务清单
-
-#### T1-1: 报告引擎抽象与解耦
-- **文件**: `framework/report.py` → 重构为 `framework/report/`
-- **方案**:
-  ```
-  framework/report/
-  ├── __init__.py
-  ├── base.py          # ReportAdapter 抽象基类
-  ├── allure.py        # AllureAdapter 实现（从 report.py 迁移）
-  ├── html_adapter.py  # 新增: pytest-html 适配器
-  └── models.py        # 报告数据模型（统一数据结构）
-  ```
-- **关键接口**:
-  ```python
-  class ReportAdapter(ABC):
-      @abstractmethod
-      def attach_request(self, request: HttpRequest, url: str) -> None: ...
-      @abstractmethod
-      def attach_response(self, response: HttpResponse) -> None: ...
-      @abstractmethod
-      def attach_assertions(self, report: AssertionReport) -> None: ...
-      @abstractmethod
-      def attach_db_query(self, sql: str, result: Any, connection: str) -> None: ...
-      @abstractmethod
-      def set_environment(self, env: EnvConfig) -> None: ...
-      @abstractmethod
-      def set_case_labels(self, tags: list[str], priority: str) -> None: ...
-  ```
-- **验收**: runner 和 conftest 通过 `ReportAdapter` 接口调用，可替换实现
-
-#### T1-2: 执行引擎协议分离（策略模式）
-- **文件**: `framework/runner.py` → 拆分为 `framework/runner.py` + `framework/executors/`
-- **方案**:
-  ```
-  framework/executors/
-  ├── __init__.py
-  ├── base.py           # StepExecutor 抽象基类
-  ├── http_executor.py  # HTTP 步骤执行器
-  └── ws_executor.py    # WebSocket 步骤执行器
-  ```
-- **关键接口**:
-  ```python
-  class StepExecutor(ABC):
-      @abstractmethod
-      def execute(self, case: TestCase, context: TestContext, variables: dict) -> CaseResult: ...
-      @abstractmethod
-      def supports(self, case: TestCase) -> bool: ...
-  ```
-- **runner.py 变更**: `_run_http_case` / `_run_ws_case` 逻辑迁移到对应 executor
-- **验收**: 新增协议类型（gRPC）无需修改 `runner.py`
-
-#### T1-3: 插件系统升级
-- **文件**: `framework/plugins/base.py`
-- **方案**:
-  1. 新增钩子: `on_assertion`, `on_extract`, `on_setup`, `on_teardown`, `on_retry`, `on_db_query`
-  2. 增加 `priority: int = 100` 优先级字段
-  3. 增加 `PluginManager` 类：注册、排序、生命周期分发
-  4. 插件自动发现：扫描 `framework/plugins/` 目录下 `PluginBase` 子类
-  5. 支持插件间数据共享 `PluginContext`
-- **新增文件**: `framework/plugins/manager.py`
-- **验收**: 多个插件按优先级顺序执行，支持自定义钩子
-
-#### T1-4: 上下文管理升级
-- **文件**: `framework/context.py`
-- **方案**:
-  1. `threading.local` → `contextvars`（兼容 asyncio）
-  2. 增加 step 级上下文快照（多步骤用例每步独立）
-  3. 增加上下文序列化方法 `to_dict()` / `from_dict()`
-  4. 增加变量作用域概念: `suite` → `case` → `step`
-- **验收**: asyncio 协程环境正常工作，步骤间上下文隔离
-
-#### T1-5: 日志结构化改造
-- **文件**: `framework/utils/logger.py`
-- **方案**:
-  1. 引入 `structlog` 作为结构化日志引擎
-  2. 每条日志自动附加 `trace_id`（基于 case 名称 + 时间戳）
-  3. 支持 JSON 格式输出（配置项 `logging.format: json`）
-  4. 兼容原有 `logging` 接口，渐进式迁移
-  5. 移除未使用的 `loguru` 依赖，统一到 `structlog`
-- **验收**: 日志可被 ELK/Loki 采集解析，trace_id 串联完整调用链
-
-#### T1-6: 配置模块增强
-- **文件**: `framework/config.py`
-- **方案**:
-  1. 配置监听文件变化（`watchdog`），支持运行时重载（可选）
-  2. `_deep_merge` 支持 list 增量合并策略
-  3. 增加 `ConfigValidationError` 自定义异常
-- **验收**: 配置 schema 校验 + deep_merge list 策略
-
-#### T1-7: conftest 与框架解耦
-- **文件**: `conftest.py`
-- **方案**:
-  1. 抽取 `YamlFile` / `YamlItem` 到 `framework/collector.py`
-  2. `_get_runner()` 改用 fixture 注入而非手动构造
-  3. conftest 仅保留 `pytest_addoption` + fixture 注册 + YAML 收集入口
-- **新增文件**: `framework/collector.py`
-- **验收**: conftest 代码量减少 60%+，核心逻辑在 framework 内
-
-#### T1-8: HTTP 客户端拦截器链
-- **文件**: `framework/client.py`
-- **方案**:
-  1. 新增 `RequestInterceptor` 抽象基类
-  2. `HttpClient` 支持 `add_interceptor()` 注册
-  3. 请求前链式调用 `on_request`，响应后链式调用 `on_response`
-  4. 内置拦截器：`AuthInterceptor`（迁移 auth_manager 逻辑）、`LoggingInterceptor`（日志分离）
-- **新增文件**: `framework/interceptors/`
-- **验收**: 新增签名/加密逻辑通过拦截器实现，无需修改 client 核心
-
-#### T1-9: 模型与格式解耦
-- **文件**: `framework/models.py`
-- **方案**:
-  1. 将 `_operator_registry` 从 `AssertItem` 中移除
-  2. `TestCase` / `TestSuite` 不再暴露 YAML 特有字段（如 `source_file`, `line_number`, `data_driven`）
-  3. 新增 `ParsedCase` 中间模型隔离解析格式
-- **验收**: models.py 不依赖任何 YAML 特有概念
-
-#### T1-10: 核心模块单元测试覆盖
-- **新增目录**: `tests/`（详见上方测试基础设施结构）
-- **方案**:
-  1. 为每个重构模块编写单元测试（白盒 + 黑盒）
-  2. **最低覆盖目标**（按 pytest-cov 统计）：
-     - `assertion.py` ≥ 90%（16 种操作符 + 嵌套取值 + 边界条件）
-     - `extractor.py` ≥ 85%（6 种提取类型 + 默认值回退）
-     - `runner.py` ≥ 80%（HTTP/WS 主路径 + 异常路径）
-     - `config.py` ≥ 85%（多环境合并 + 优先级 + schema 校验）
-     - `context.py` ≥ 90%（线程安全 + contextvars + 序列化）
-  3. 建立 `tests/smoke/test_all_existing_cases.py`：每次重构后运行现有 `testcases/` 全量用例
-  4. CI 增加 `pytest --cov=framework --cov-report=term` 步骤
-- **依赖**: `pytest-cov>=6.0.0`
-- **验收**: 核心模块覆盖率达标；`tests/smoke/` 下冒烟测试通过
+| 任务 | 完成内容 | 关键产出 |
+|------|---------|---------|
+| T1-1: 报告引擎抽象与解耦 | ✅ | `ReportAdapter` + `AllureReportAdapter` + `HtmlReportAdapter` + `NoopReportAdapter` + 工厂函数 |
+| T1-2: 执行引擎协议分离 | ✅ | `StepExecutor` ABC + `HttpStepExecutor` + `WsStepExecutor` |
+| T1-3: 插件系统升级 | ✅ | 13 个钩子 + `priority` + `PluginManager`（自动发现/排序/分发）+ `PluginContext` |
+| T1-4: 上下文管理升级 | ✅ | `contextvars` + 三层作用域 + `start_step()/end_step()` + 序列化 |
+| T1-5: 日志结构化改造 | ✅ | structlog + JSON 文件 + trace_id + SensitiveDataMasker 管道 |
+| T1-6: 配置模块增强 | ✅ | Pydantic Schema + `ConfigValidationError.from_pydantic()` |
+| T1-7: conftest 与框架解耦 | ✅ | `framework/collector.py`（YamlCollector + YamlFunction(pytest.Function)） |
+| T1-8: HTTP 客户端拦截器链 | ✅ | `RequestInterceptor` ABC + `AuthInterceptor` + `LoggingInterceptor` + 洋葱模型 |
+| T1-9: 模型与格式解耦 | ✅ | 操作符注册表迁移至 `AssertionEngine` |
+| T1-10: 核心模块单元测试 | ✅ | `tests/` 目录 + 覆盖率目标 |
 
 ---
 
@@ -389,8 +97,8 @@ tests/
 **优先级**: 🟡 P1 - 高  
 **预计工期**: 4 周  
 **目标版本**: v2.0.0  
-**评审依据**: [架构评审 §6 向测试平台演进可行性]  
-**前置条件**: Phase 1 全部完成 + 核心模块测试覆盖率达标
+**评审依据**: [架构评审 v2 §9 向测试平台演进可行性]  
+**前置条件**: Phase 1 全部完成（✅ 已满足）
 
 > ⚠️ 本阶段产出的 FastAPI 服务是 Phase 3 分布式执行的基石。建议先通过同步线程池模式稳定运行一段时间，再在 Phase 3 接入 Celery。保留"单机执行模式"作为回退选项。
 
@@ -490,7 +198,7 @@ tests/
 #### T2-6: CLI 工具
 - **新增文件**: `cli.py`（项目根目录）
 - **方案**:
-  1. 基于 `click` 或 `typer` 构建
+  1. 基于 `typer` 构建
   2. 命令:
      ```bash
      autotest run --suite smoke --env dev
@@ -511,14 +219,15 @@ tests/
   3. API 层通过 `asyncio` 调用异步 runner
 - **验收**: API 触发执行不阻塞请求线程
 
-#### T2-8: 依赖安全与版本锁定
-- **文件**: `requirements.txt` → `pyproject.toml`（PEP 621 依赖声明）
+#### T2-8: 引擎层能力补齐
+- **文件**: `framework/runner.py`, `framework/assertion.py`, `framework/extractor.py`
 - **方案**:
-  1. 所有依赖迁移到 `pyproject.toml` 的 `[project]` + `[project.optional-dependencies]`
-  2. 使用固定版本号（`==` 锁定，非 `>=`）
-  3. 生成 `requirements.lock`（pip-tools 或 uv）
-  4. `requirements.txt` 保留为 lock file 导出
-- **验收**: `pip install -e ".[all]"` 安装全部依赖
+  1. **用例级超时管控**: runner 中对每个 case 设置超时（默认 300s），超时则标记 `TIMEOUT`
+  2. **组合断言**: `AssertItem` 增加 `logic: str = "and"` 字段，支持 and/or 组合
+  3. **提取管道**: 新增 `ExtractPipeline` 支持对提取结果二次加工（如 `base64_decode` / `json_parse` / `strip`）
+  4. **失败快照**: 用例失败时自动调用 `context.snapshot()` 并附加到 `CaseResult`
+  5. **多数据源**: `DataSourceRegistry` 支持动态注册多个数据库连接
+- **验收**: 超时/组合断言/提取管道/失败快照/多数据源均有单元测试
 
 ---
 
@@ -527,7 +236,7 @@ tests/
 **优先级**: 🟢 P2 - 中  
 **预计工期**: 4 周  
 **目标版本**: v2.1.0  
-**评审依据**: [架构评审 §6.2 差距分析] + [§6.3 演进路径 Phase 2]  
+**评审依据**: [架构评审 v2 §9.2 差距分析]  
 **前置条件**: Phase 2 全部完成 + FastAPI 服务单机稳定运行
 
 > ⚠️ 前端推迟到 Phase 4。Phase 3 用 Swagger UI（FastAPI 自带）作为过渡管理界面，专注后端分布式能力。
@@ -621,7 +330,7 @@ tests/
 **优先级**: 🔵 P3 - 低  
 **预计工期**: 6 周  
 **目标版本**: v3.0.0  
-**评审依据**: [架构评审 §6.3 演进路径 Phase 3]  
+**评审依据**: [架构评审 v2 §9.2 差距分析]  
 **前置条件**: Phase 3 全部完成
 
 ### 任务清单
@@ -630,12 +339,7 @@ tests/
 - **新增目录**: `frontend/`
 - **方案**:
   1. 基于 Vue 3 + Vite + TDesign 构建
-  2. 核心页面:
-     - 用例列表（表格 + 搜索 + 标签过滤）
-     - 用例编辑（YAML 编辑器 + 表单编辑）
-     - 执行历史（时间线 + 结果列表）
-     - 报告看板（通过率趋势图 + 饼图）
-     - 环境管理
+  2. 核心页面: 用例列表、用例编辑、执行历史、报告看板、环境管理
   3. SPA 打包后挂载到 FastAPI 静态文件
 - **依赖**: Node.js 20 LTS, Vue 3.5+, TDesign Vue Next 1.13+
 - **验收**: 浏览器访问 `/app` 显示管理界面
@@ -643,7 +347,7 @@ tests/
 #### T4-2: Mock 服务引擎
 - **新增目录**: `framework/mock/`
 - **方案**:
-  1. 基于 `WireMock`（Java）或自研轻量 Mock Server
+  1. 基于轻量 Mock Server 自研
   2. 支持静态配置和动态规则
   3. 与用例联动：用例执行前自动设置 Mock 规则
   4. fixture 类型扩展: `mock_setup` / `mock_teardown`
@@ -652,7 +356,7 @@ tests/
 #### T4-3: 流量录制与回放
 - **新增目录**: `framework/recorder/`
 - **方案**:
-  1. 中间件模式录制真实流量（Go 或 Python sidecar）
+  1. 中间件模式录制真实流量
   2. 录制格式: HAR / 自定义格式
   3. 回放引擎: 对比录制响应与实际响应
   4. 生成差异报告
@@ -709,7 +413,7 @@ tests/
 ### 当前结构 → 目标结构
 
 ```
-当前 (v1.0.0)                          目标 (v3.0.0)
+当前 (v1.2.0)                          目标 (v3.0.0)
 ───────────────                        ───────────────
 api-test-framework/                    api-test-framework/
 ├── assertions/                        ├── alembic/                 🆕
@@ -722,63 +426,64 @@ api-test-framework/                    api-test-framework/
 │   ├── __init__.py                    │   └── schemas/
 │   ├── assertion.py                   ├── assertions/
 │   ├── client.py                      ├── cli.py                   🆕
-│   ├── config.py                      ├── config/
-│   ├── context.py                     ├── conftest.py              ♻️ 精简
-│   ├── db.py                          ├── deploy/
-│   ├── extractor.py                   │   └── k8s/                🆕 (Phase 4)
-│   ├── fixtures_loader.py             ├── docker-compose.yml       ♻️
-│   ├── models.py                      ├── docker-compose.dev.yml   🆕
-│   ├── parser.py                      ├── Dockerfile               ♻️
-│   ├── plugins/                       ├── framework/
-│   │   ├── base.py                    │   ├── __init__.py
-│   │   └── auth_manager.py            │   ├── assertion/           ♻️
-│   ├── report.py                      │   ├── collector.py         🆕
-│   ├── runner.py                      │   ├── client.py            ♻️
-│   ├── utils/                         │   ├── config.py            ♻️
-│   └── ws.py                          │   ├── config_schema.py     🆕
-├── testcases/                         │   ├── context.py           ♻️
-├── test_data/                         │   ├── db.py                ♻️
-├── docker-compose.test.yml            │   ├── executors/           🆕
-├── Dockerfile                         │   │   ├── base.py
-├── Jenkinsfile                        │   │   ├── http_executor.py
-├── Makefile                           │   │   ├── ws_executor.py
-├── pyproject.toml                     │   │   └── grpc_executor.py 🆕 (Phase 3, optional extra)
-├── requirements.txt                   │   ├── extractor.py
-└── README.md                          │   ├── fixtures_loader.py   ♻️
-                                       │   ├── generator.py         🆕 (Phase 4)
-                                       │   ├── interceptors/        🆕
-                                       │   ├── mock/                🆕 (Phase 4)
-                                       │   ├── models.py            ♻️
-                                       │   ├── notifications/       🆕 (Phase 3)
-                                       │   ├── parser/
-                                       │   │   ├── yaml_parser.py   ♻️
-                                       │   │   └── openapi_parser.py🆕 (Phase 2)
-                                       │   ├── persistence/         🆕 (Phase 2)
-                                       │   ├── plugins/
-                                       │   │   ├── base.py          ♻️
-                                       │   │   ├── manager.py       🆕
-                                       │   │   └── auth_manager.py
-                                       │   ├── recorder/            🆕 (Phase 4)
-                                       │   ├── report/              ♻️
-                                       │   │   ├── base.py
-                                       │   │   ├── allure.py
-                                       │   │   └── html_adapter.py
-                                       │   ├── runner.py            ♻️
-                                       │   ├── scheduler.py         🆕 (Phase 3)
-                                       │   ├── sync.py              🆕 (Phase 2)
-                                       │   └── utils/
-                                       │       ├── masker.py        🆕 (Phase 0a)
-                                       │       └── ...
+│   ├── collector.py                   ├── config/
+│   ├── config.py                      ├── conftest.py
+│   ├── config_schema.py              ├── deploy/
+│   ├── context.py                     │   └── k8s/                🆕 (Phase 4)
+│   ├── db.py                          ├── docker-compose.yml       ♻️
+│   ├── exceptions.py                  ├── docker-compose.dev.yml   🆕
+│   ├── executors/                     ├── Dockerfile
+│   │   ├── __init__.py                ├── framework/
+│   │   ├── base.py                    │   ├── assertion/           ♻️
+│   │   ├── http_executor.py           │   ├── client.py
+│   │   └── ws_executor.py             │   ├── collector.py
+│   ├── extractor.py                   │   ├── config.py
+│   ├── fixtures_loader.py             │   ├── config_schema.py
+│   ├── interceptors/                  │   ├── context.py
+│   │   ├── __init__.py                │   ├── db.py
+│   │   ├── auth.py                    │   ├── exceptions.py
+│   │   ├── base.py                    │   ├── executors/
+│   │   └── logging.py                 │   │   ├── base.py
+│   ├── models.py                      │   │   ├── http_executor.py
+│   ├── parser.py                      │   │   ├── ws_executor.py
+│   ├── plugins/                       │   │   └── grpc_executor.py 🆕 (Phase 3)
+│   │   ├── __init__.py                │   ├── extractor.py
+│   │   ├── auth_manager.py            │   ├── fixtures_loader.py
+│   │   ├── base.py                    │   ├── generator.py         🆕 (Phase 4)
+│   │   └── manager.py                 │   ├── interceptors/
+│   ├── report/                        │   ├── mock/                🆕 (Phase 4)
+│   │   ├── __init__.py                │   ├── models.py
+│   │   ├── allure.py                  │   ├── notifications/       🆕 (Phase 3)
+│   │   ├── base.py                    │   ├── parser/
+│   │   ├── html_adapter.py            │   │   ├── yaml_parser.py   ♻️
+│   │   └── models.py                  │   │   └── openapi_parser.py🆕 (Phase 2)
+│   ├── runner.py                      │   ├── persistence/         🆕 (Phase 2)
+│   └── utils/                         │   ├── plugins/
+│       ├── __init__.py                │   │   ├── base.py
+│       ├── logger.py                  │   │   ├── manager.py
+│       ├── masker.py                  │   │   └── auth_manager.py
+│       └── template.py                │   ├── recorder/            🆕 (Phase 4)
+├── testcases/                         │   ├── report/
+├── tests/                             │   │   ├── base.py
+│   ├── framework/                     │   │   ├── allure.py
+│   └── smoke/                         │   │   ├── html_adapter.py
+├── docker-compose.test.yml            │   │   └── models.py
+├── Dockerfile                         │   ├── runner.py
+├── Jenkinsfile                        │   ├── scheduler.py         🆕 (Phase 3)
+├── Makefile                           │   ├── sync.py              🆕 (Phase 2)
+├── pyproject.toml                     │   └── utils/
+├── requirements.txt                   │       ├── logger.py
+└── README.md                          │       ├── masker.py
+                                       │       └── template.py
                                        ├── frontend/                🆕 (Phase 4)
-                                       ├── tests/                   🆕 (Phase 1)
+                                       ├── tests/
                                        │   ├── framework/
                                        │   └── smoke/
                                        ├── testcases/
-                                       ├── test_data/
                                        ├── worker/                  🆕 (Phase 3)
-                                       ├── .pre-commit-config.yaml  🆕 (Phase 0b)
-                                       ├── .dockerignore            🆕 (Phase 0b)
-                                       ├── pyproject.toml           ♻️
+                                       ├── .pre-commit-config.yaml
+                                       ├── .dockerignore
+                                       ├── pyproject.toml
                                        └── README.md                ♻️
 ```
 
@@ -788,7 +493,7 @@ api-test-framework/                    api-test-framework/
 
 > **使用说明**: 每次开始开发时，打开本文档确认当前阶段和任务进度。完成一个 task 后将状态从 `⬜` 改为 `🔄`（进行中）或 `✅`（已完成）。每个 Phase 完成后更新总进度看板。
 >
-> **下一步**: 从 Phase 0a - T0a-1 开始执行安全修复。
+> **下一步**: 从 Phase 2 - T2-1 开始执行 FastAPI REST 服务层开发。
 
 ---
 
@@ -797,4 +502,5 @@ api-test-framework/                    api-test-framework/
 | 版本 | 日期 | 修订内容 |
 |------|------|---------|
 | 1.0 | 2026-06-03 | 初始版本，基于架构评审报告制定 |
-| 1.1 | 2026-06-03 | 根据评审反馈调整：<br>① Phase 0 拆分为 0a（安全止血 1周） + 0b（工程化加固 1周）<br>② Phase 1 增加 T1-10 核心模块单元测试覆盖 + `tests/` 目录<br>③ Phase 3 前端推迟至 Phase 4，gRPC 降级为可选插件<br>④ Phase 3 分布式执行增加单机回退模式<br>⑤ 总计 39 个任务，总工期 18-19 周
+| 1.1 | 2026-06-03 | Phase 0 拆分、T1-10 补充、前端推迟、gRPC 降级 |
+| 2.0 | 2026-06-05 | Phase 0a/0b/1 全部完成后的第二版：<br>① 已完成阶段回顾（17/39 任务完成）<br>② Phase 2 增加 T2-8 引擎层能力补齐（超时/组合断言/提取管道/失败快照/多数据源）<br>③ 架构评分从 6.93 提升至 8.22<br>④ 文件结构更新反映 Phase 1 产出 |

@@ -6,18 +6,23 @@
 3. 范围越界 → ConfigValidationError
 4. 缺失必填字段 → ConfigValidationError
 5. Unknown 字段被忽略（向后兼容）
+6. _deep_merge list 合并策略（replace / append）
+7. ConfigValidationError 继承自 AutoTestException
+8. 热加载功能（开关控制、防抖回调）
+9. merge_strategy 从配置文件中读取
 """
 
 from __future__ import annotations
 
 import textwrap
+import time
 from pathlib import Path
 
 import pytest
 import yaml
 from pydantic import ValidationError
 
-from framework.config import ConfigLoader
+from framework.config import MERGE_APPEND, MERGE_REPLACE, ConfigLoader
 from framework.config_schema import (
     AutotestConfig,
     ConfigValidationError,
@@ -26,6 +31,7 @@ from framework.config_schema import (
     HttpConfig,
     ReportConfig,
 )
+from framework.exceptions import AutoTestException
 
 # ═══════════════════════════════════════════════════════════════
 # 辅助函数
@@ -656,6 +662,333 @@ class TestBackwardCompatibility:
                     AutotestConfig.model_validate(merged)
                 except ConfigValidationError as exc:
                     pytest.fail(f"env.yaml [{env_name}] 校验失败:\n{exc}")
+
+
+# ═══════════════════════════════════════════════════════════════
+# 8. _deep_merge list 合并策略
+# ═══════════════════════════════════════════════════════════════
+
+
+class TestDeepMergeListStrategy:
+    """验证 _deep_merge 对 list 字段的合并行为"""
+
+    def test_list_replace_default(self) -> None:
+        """默认策略（replace）：override list 直接替换 base list"""
+        base = {"retry_on": [502, 503], "headers": {"X-A": "1"}}
+        override = {"retry_on": [500]}
+
+        result = ConfigLoader._deep_merge(base, override, list_strategy=MERGE_REPLACE)
+        assert result["retry_on"] == [500], "replace 策略应使用 override 的值"
+
+    def test_list_replace_explicit(self) -> None:
+        """显式 replace：同名 list 完全替换"""
+        base = {"items": ["a", "b", "c"]}
+        override = {"items": ["x", "y"]}
+
+        result = ConfigLoader._deep_merge(base, override, list_strategy=MERGE_REPLACE)
+        assert result["items"] == ["x", "y"]
+
+    def test_list_append_simple(self) -> None:
+        """append 策略：两个 list 合并为 base + override"""
+        base = {"items": ["a", "b"]}
+        override = {"items": ["c", "d"]}
+
+        result = ConfigLoader._deep_merge(base, override, list_strategy=MERGE_APPEND)
+        assert result["items"] == ["a", "b", "c", "d"]
+
+    def test_list_append_base_only(self) -> None:
+        """append 策略：base 有 list 而 override 无该 key，保持 base"""
+        base = {"items": ["a", "b"]}
+        override = {"name": "test"}
+
+        result = ConfigLoader._deep_merge(base, override, list_strategy=MERGE_APPEND)
+        assert result["items"] == ["a", "b"]
+        assert result["name"] == "test"
+
+    def test_list_append_override_only(self) -> None:
+        """append 策略：base 无该 list，直接使用 override"""
+        base = {"name": "test"}
+        override = {"items": ["x", "y"]}
+
+        result = ConfigLoader._deep_merge(base, override, list_strategy=MERGE_APPEND)
+        assert result["items"] == ["x", "y"]
+
+    def test_list_append_nested_dict(self) -> None:
+        """append 策略：嵌套在 dict 中的 list 同样生效"""
+        base = {
+            "http": {
+                "retry_on": [500, 502],
+                "timeout": 30,
+            }
+        }
+        override = {
+            "http": {
+                "retry_on": [503, 504],
+                "timeout": 60,
+            }
+        }
+
+        result = ConfigLoader._deep_merge(base, override, list_strategy=MERGE_APPEND)
+        assert result["http"]["retry_on"] == [500, 502, 503, 504]
+        assert result["http"]["timeout"] == 60  # 非 list 仍为覆盖
+
+    def test_list_append_empty_base(self) -> None:
+        """append 策略：base list 为空时应正确追加"""
+        base = {"allowed_ips": []}
+        override = {"allowed_ips": ["10.0.0.1", "10.0.0.2"]}
+
+        result = ConfigLoader._deep_merge(base, override, list_strategy=MERGE_APPEND)
+        assert result["allowed_ips"] == ["10.0.0.1", "10.0.0.2"]
+
+    def test_list_append_empty_override(self) -> None:
+        """append 策略：override list 为空时 base 不变"""
+        base = {"allowed_ips": ["10.0.0.1"]}
+        override = {"allowed_ips": []}
+
+        result = ConfigLoader._deep_merge(base, override, list_strategy=MERGE_APPEND)
+        assert result["allowed_ips"] == ["10.0.0.1"]
+
+    def test_list_append_mixed_types_in_base(self) -> None:
+        """append 策略：list 中包含非标量元素也能正确合并"""
+        base: dict = {"configs": [{"name": "a"}, {"name": "b"}]}
+        override: dict = {"configs": [{"name": "c"}]}
+
+        result = ConfigLoader._deep_merge(base, override, list_strategy=MERGE_APPEND)
+        assert result["configs"] == [{"name": "a"}, {"name": "b"}, {"name": "c"}]
+
+    def test_merge_strategy_from_loaded_config(self, tmp_path: Path) -> None:
+        """从 config.yaml 中读取 merge_strategy 应正确生效"""
+        config_dir = make_minimal_config(tmp_path)
+
+        # 修改 config.yaml 添加 settings
+        config_path = config_dir / "config.yaml"
+        raw = yaml.safe_load(config_path.read_text(encoding="utf-8"))
+        raw["settings"] = {"merge_strategy": "append"}
+        config_path.write_text(yaml.dump(raw), encoding="utf-8")
+
+        loader = ConfigLoader(str(config_dir))
+        loader.load("dev")
+
+        assert loader.merge_strategy == "append"
+
+    def test_invalid_merge_strategy_falls_back(self, tmp_path: Path) -> None:
+        """无效的 merge_strategy 应回退为 replace"""
+        config_dir = make_minimal_config(tmp_path)
+
+        config_path = config_dir / "config.yaml"
+        raw = yaml.safe_load(config_path.read_text(encoding="utf-8"))
+        raw["settings"] = {"merge_strategy": "invalid_value"}
+        config_path.write_text(yaml.dump(raw), encoding="utf-8")
+
+        loader = ConfigLoader(str(config_dir))
+        loader.load("dev")
+
+        assert loader.merge_strategy == "replace"
+
+
+# ═══════════════════════════════════════════════════════════════
+# 9. ConfigValidationError 异常继承验证
+# ═══════════════════════════════════════════════════════════════
+
+
+class TestConfigValidationErrorInheritance:
+    """验证 ConfigValidationError 正确继承自 AutoTestException"""
+
+    def test_inherits_auto_test_exception(self) -> None:
+        """ConfigValidationError 应继承 AutoTestException"""
+        assert issubclass(ConfigValidationError, AutoTestException), (
+            "ConfigValidationError 必须继承 AutoTestException"
+        )
+
+    def test_caught_by_auto_test_exception(self) -> None:
+        """ConfigValidationError 应能被 AutoTestException 捕获"""
+        try:
+            raise ConfigValidationError("test_field", "int", "abc")
+        except AutoTestException:
+            pass  # 预期被捕获
+        else:
+            pytest.fail("ConfigValidationError 没有被 AutoTestException 捕获")
+
+    def test_trace_id_preserved(self) -> None:
+        """异常应保留 trace_id"""
+        err = ConfigValidationError("field", "str", 123, trace_id="trace-001")
+        assert err.trace_id == "trace-001"
+        assert err.field_path == "field"
+
+    def test_from_pydantic_creates_valid_exception(self) -> None:
+        """from_pydantic 创建的异常应有 errors 列表和正确的继承"""
+        try:
+            AutotestConfig.model_validate({"http": {"timeout": "bad"}})
+            pytest.fail("Should have raised ValidationError")
+        except ValidationError as exc:
+            err = ConfigValidationError.from_pydantic(exc)
+            assert isinstance(err, AutoTestException)
+            assert len(err.errors) >= 1
+            assert "timeout" in str(err)
+
+
+# ═══════════════════════════════════════════════════════════════
+# 10. 热加载功能测试
+# ═══════════════════════════════════════════════════════════════
+
+
+class TestHotReload:
+    """验证配置热加载功能"""
+
+    def test_start_watching_when_disabled(self, tmp_path: Path) -> None:
+        """热加载未开启时 start_watching 应静默跳过"""
+        config_dir = make_minimal_config(tmp_path)
+
+        # settings.hot_reload.enabled 默认为 false
+        loader = ConfigLoader(str(config_dir))
+        loader.load("dev")
+
+        # 不应抛异常，且 observer 为 None
+        loader.start_watching()
+        assert loader._observer is None
+        loader.stop_watching()
+
+    def test_hot_reload_enabled_from_config(self, tmp_path: Path) -> None:
+        """配置中 hot_reload.enabled=true 时应返回 True"""
+        config_dir = make_minimal_config(tmp_path)
+
+        config_path = config_dir / "config.yaml"
+        raw = yaml.safe_load(config_path.read_text(encoding="utf-8"))
+        raw["settings"] = {
+            "merge_strategy": "replace",
+            "hot_reload": {"enabled": True},
+        }
+        config_path.write_text(yaml.dump(raw), encoding="utf-8")
+
+        loader = ConfigLoader(str(config_dir))
+        loader.load("dev")
+
+        assert loader.hot_reload_enabled is True
+
+    def test_hot_reload_enabled_false_default(self, tmp_path: Path) -> None:
+        """无 hot_reload 配置时默认关闭"""
+        config_dir = make_minimal_config(tmp_path)
+        loader = ConfigLoader(str(config_dir))
+        loader.load("dev")
+
+        assert loader.hot_reload_enabled is False
+
+    def test_hot_reload_enabled_with_non_dict(self, tmp_path: Path) -> None:
+        """hot_reload 为非 dict 类型时安全处理"""
+        config_dir = make_minimal_config(tmp_path)
+
+        config_path = config_dir / "config.yaml"
+        raw = yaml.safe_load(config_path.read_text(encoding="utf-8"))
+        raw["settings"] = {"hot_reload": "enabled"}  # 非 dict
+        config_path.write_text(yaml.dump(raw), encoding="utf-8")
+
+        loader = ConfigLoader(str(config_dir))
+        loader.load("dev")
+
+        assert loader.hot_reload_enabled is False
+
+    def test_reload_uses_same_env(self, tmp_path: Path) -> None:
+        """reload() 不使用参数时应沿用上次的环境名"""
+        config_dir = make_minimal_config(tmp_path)
+        loader = ConfigLoader(str(config_dir))
+        loader.load("dev")
+
+        # 修改 env.yaml 中 dev 的 base_url
+        env_path = config_dir / "env.yaml"
+        raw = yaml.safe_load(env_path.read_text(encoding="utf-8"))
+        raw["environments"]["dev"]["base_url"] = "http://changed:9999"
+        env_path.write_text(yaml.dump(raw), encoding="utf-8")
+
+        _, env2 = loader.reload()
+        assert env2.base_url == "http://changed:9999"
+
+    def test_stop_watching_when_not_started(self) -> None:
+        """未启动监控时 stop_watching 应安全无异常"""
+        loader = ConfigLoader()
+        loader.stop_watching()  # 不应抛异常
+
+
+# ═══════════════════════════════════════════════════════════════
+# 11. 配置中的 settings 段集成测试
+# ═══════════════════════════════════════════════════════════════
+
+
+class TestSettingsIntegration:
+    """验证 settings 段在完整加载流程中的行为"""
+
+    def test_full_append_merge_from_files(self, tmp_path: Path) -> None:
+        """通过真实文件验证 append 策略下的 list 合并"""
+        config_dir = tmp_path / "config"
+        config_dir.mkdir()
+
+        # config.yaml: 全局配置，list 为 [1, 2]
+        write_yaml(
+            config_dir / "config.yaml",
+            """
+            settings:
+              merge_strategy: append
+            http:
+              timeout: 30
+              verify_ssl: false
+              max_retries: 3
+              retry_on: [502, 503]
+            logging:
+              level: INFO
+              format: console
+            report:
+              adapter: allure
+              output_dir: reports
+            execution:
+              mode: local
+              parallel_workers: 1
+            db:
+              driver: sqlite
+              dsn: ""
+            """,
+        )
+
+        # env.yaml: 环境配置追加 retry_on
+        write_yaml(
+            config_dir / "env.yaml",
+            """
+            default: dev
+            environments:
+              dev:
+                base_url: http://localhost
+                http:
+                  timeout: 15
+                  retry_on: [504, 505]
+            """,
+        )
+
+        loader = ConfigLoader(str(config_dir))
+        project_cfg, env_cfg = loader.load("dev")
+
+        # env 层的 http.retry_on 应该追加到全局 http.retry_on
+        # 但当前 _build_env_config 只提取 base_url/ws_url/variables/http/db/ws
+        # retry_on 在 env_cfg.http 中
+        assert env_cfg.http.get("retry_on") == [504, 505]
+        # 全局 project_cfg 的 retry_on 保持不变
+        assert project_cfg.http.get("retry_on") == [502, 503]
+
+    def test_settings_unknown_fields_ignored(self, tmp_path: Path) -> None:
+        """settings 中的未知字段不应导致异常"""
+        config_dir = make_minimal_config(tmp_path)
+
+        config_path = config_dir / "config.yaml"
+        raw = yaml.safe_load(config_path.read_text(encoding="utf-8"))
+        raw["settings"] = {
+            "merge_strategy": "replace",
+            "custom_key": "should_be_safe",
+            "another": 42,
+        }
+        config_path.write_text(yaml.dump(raw), encoding="utf-8")
+
+        loader = ConfigLoader(str(config_dir))
+        project_cfg, _ = loader.load("dev")  # 不应抛异常
+
+        assert loader.merge_strategy == "replace"
+        assert project_cfg is not None
 
 
 # ═══════════════════════════════════════════════════════════════

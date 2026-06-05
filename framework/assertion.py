@@ -249,7 +249,8 @@ class AssertionEngine:
                 result = self._assert_single(response, item, variables or {})
                 results.append(result)
                 if not result.passed:
-                    logger.warning(f"断言失败: {result}")
+                    logger.warning("assertion_failed", path=result.path, expected=result.expected,
+                                   actual=result.actual, operator=result.operator)
             except Exception as e:
                 results.append(
                     AssertResult(
@@ -263,7 +264,12 @@ class AssertionEngine:
                 )
 
         report = AssertionReport(results=results)
-        logger.info(report.summary())
+        logger.info(
+            "assertion_report",
+            total=len(results),
+            passed=report.pass_count,
+            failed=report.fail_count,
+        )
         return report
 
     def _assert_single(

@@ -10,46 +10,13 @@
 
 from __future__ import annotations
 
-from typing import Any, Literal, Optional
+from typing import Literal, Optional
 
-from pydantic import AnyHttpUrl, BaseModel, ConfigDict, Field, ValidationError
+from pydantic import AnyHttpUrl, BaseModel, ConfigDict, Field
 
-# ═══════════════════════════════════════════════════════════════
-# 自定义异常
-# ═══════════════════════════════════════════════════════════════
-
-
-class ConfigValidationError(Exception):
-    """配置校验失败异常
-
-    封装 Pydantic ValidationError，提供清晰的字段路径和期望类型信息。
-    """
-
-    def __init__(self, errors: list[dict[str, Any]]) -> None:
-        self.errors = errors
-        lines = ["配置校验失败:"]
-        for err in errors:
-            loc = ".".join(str(p) for p in err.get("loc", []))
-            msg = err.get("msg", "未知错误")
-            expected_type = err.get("type", "")
-            lines.append(f"  - {loc}: {msg} (type={expected_type})")
-        super().__init__("\n".join(lines))
-
-    @classmethod
-    def from_pydantic(cls, exc: ValidationError) -> ConfigValidationError:
-        """从 Pydantic ValidationError 构造"""
-        errors: list[dict[str, Any]] = []
-        for e in exc.errors():
-            errors.append(
-                {
-                    "loc": e.get("loc", []),
-                    "msg": e.get("msg", ""),
-                    "type": e.get("type", ""),
-                    "input": e.get("input", None),
-                }
-            )
-        return cls(errors)
-
+# ConfigValidationError 统一由 framework.exceptions 提供（继承自 AutoTestException）
+# 此处不再重复定义，仅做 re-export 以保持向后兼容
+from framework.exceptions import ConfigValidationError  # noqa: F401
 
 # ═══════════════════════════════════════════════════════════════
 # 子配置模型
@@ -74,10 +41,11 @@ class HttpConfig(BaseModel):
 
 
 class LoggingConfig(BaseModel):
-    """日志配置
+    """日志配置（基于 structlog 结构化日志）
 
     level: 日志级别，仅限 DEBUG/INFO/WARNING/ERROR
-    format: 输出格式，console 或 json
+    format: 控制台输出格式，console（彩色）或 json（JSON 行）
+            注：文件日志始终为 JSON 格式，不受此字段影响
     sensitive_fields: 需要脱敏的字段名列表
     """
 
@@ -86,7 +54,9 @@ class LoggingConfig(BaseModel):
     level: Literal["DEBUG", "INFO", "WARNING", "ERROR"] = Field(
         default="INFO", description="日志级别"
     )
-    format: Literal["console", "json"] = Field(default="console", description="日志输出格式")
+    format: Literal["console", "json"] = Field(
+        default="console", description="控制台日志输出格式；文件日志始终为 JSON"
+    )
     sensitive_fields: list[str] = Field(default_factory=list, description="敏感字段脱敏列表")
 
 

@@ -6,6 +6,16 @@ project:
   version: "1.0.0"
 
 # ----------------------------------------------------------
+# 配置系统设置
+# ----------------------------------------------------------
+settings:
+  # list 字段合并策略: "replace"（直接替换，默认）| "append"（增量追加）
+  merge_strategy: replace
+  # 配置文件热加载
+  hot_reload:
+    enabled: false         # 是否启用热加载（需安装 watchdog）
+
+# ----------------------------------------------------------
 # HTTP 请求配置（对应 HttpConfig Schema）
 # ----------------------------------------------------------
 http:
@@ -23,10 +33,12 @@ http:
 
 # ----------------------------------------------------------
 # 日志配置（对应 LoggingConfig Schema）
+# 基于 structlog 结构化日志，支持控制台彩色 / JSON 双输出
 # ----------------------------------------------------------
 logging:
   level: INFO                          # 日志级别: DEBUG|INFO|WARNING|ERROR
-  format: console                      # 输出格式: console|json
+  format: console                      # 控制台输出格式: console(彩色)|json(JSON行)
+                                       # 注：文件日志始终为 JSON，不受此字段影响
   console:
     enabled: true
     colorize: true

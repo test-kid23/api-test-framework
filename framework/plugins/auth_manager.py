@@ -12,7 +12,13 @@ logger = Logger.get("plugin.auth")
 
 
 class AuthManager(PluginBase):
-    """认证管理插件 — 自动处理 token 刷新"""
+    """认证管理插件 — 自动处理 token 刷新
+
+    priority=10 确保在请求链的最前端执行，
+    保证其他 on_request 插件拿到的是已注入 token 的请求。
+    """
+
+    priority: int = 10
 
     def __init__(self) -> None:
         self._token: str | None = None
@@ -40,6 +46,11 @@ class AuthManager(PluginBase):
             if self._token:
                 request.headers["Authorization"] = f"Bearer {self._token}"
         return request
+
+    def on_error(self, error: Exception, case: Any = None) -> None:
+        """发生错误时记录认证相关信息"""
+        if self._token_expired():
+            logger.warning(f"Token 已过期，用例: {getattr(case, 'name', 'unknown')}")
 
     def _token_expired(self) -> bool:
         """检查 token 是否过期"""

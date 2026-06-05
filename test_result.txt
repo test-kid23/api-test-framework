@@ -1,0 +1,74 @@
+============================= test session starts =============================
+platform win32 -- Python 3.12.10, pytest-8.4.2, pluggy-1.6.0 -- C:\Users\Admin\AppData\Local\Programs\Python\Python312\python.exe
+cachedir: .pytest_cache
+rootdir: C:\private\aibuilder\api-test-framework
+configfile: pyproject.toml
+plugins: anyio-4.13.0, asyncio-0.24.0, cov-5.0.0, env-1.2.0, xdist-3.8.0, respx-0.23.1
+asyncio: mode=Mode.STRICT, default_loop_scope=None
+collecting ... collected 46 items
+
+tests/framework/test_extractor.py::TestJsonPathExtraction::test_extract_simple_field PASSED [  2%]
+tests/framework/test_extractor.py::TestJsonPathExtraction::test_extract_nested_field PASSED [  4%]
+tests/framework/test_extractor.py::TestJsonPathExtraction::test_extract_deep_nested PASSED [  6%]
+tests/framework/test_extractor.py::TestJsonPathExtraction::test_extract_list_item PASSED [  8%]
+tests/framework/test_extractor.py::TestJsonPathExtraction::test_extract_nonexistent_path PASSED [ 10%]
+tests/framework/test_extractor.py::TestJsonPathExtraction::test_extract_nonexistent_with_default PASSED [ 13%]
+tests/framework/test_extractor.py::TestJsonPathExtraction::test_multiple_jsonpath_extracts PASSED [ 15%]
+tests/framework/test_extractor.py::TestHeaderExtraction::test_extract_header_exact_case PASSED [ 17%]
+tests/framework/test_extractor.py::TestHeaderExtraction::test_extract_header_lowercase PASSED [ 19%]
+tests/framework/test_extractor.py::TestHeaderExtraction::test_extract_header_uppercase PASSED [ 21%]
+tests/framework/test_extractor.py::TestHeaderExtraction::test_extract_header_mixed_case PASSED [ 23%]
+tests/framework/test_extractor.py::TestHeaderExtraction::test_extract_nonexistent_header PASSED [ 26%]
+tests/framework/test_extractor.py::TestHeaderExtraction::test_extract_nonexistent_header_with_default PASSED [ 28%]
+tests/framework/test_extractor.py::TestBodyRegexExtraction::test_extract_regex_with_capture_group PASSED [ 30%]
+tests/framework/test_extractor.py::TestBodyRegexExtraction::test_extract_regex_no_capture_group PASSED [ 32%]
+tests/framework/test_extractor.py::TestBodyRegexExtraction::test_extract_regex_no_match PASSED [ 34%]
+tests/framework/test_extractor.py::TestBodyRegexExtraction::test_extract_regex_no_match_with_default PASSED [ 36%]
+tests/framework/test_extractor.py::TestBodyRegexExtraction::test_extract_regex_from_dict_body PASSED [ 39%]
+tests/framework/test_extractor.py::TestStatusCodeExtraction::test_extract_status_code_200 PASSED [ 41%]
+tests/framework/test_extractor.py::TestStatusCodeExtraction::test_extract_status_code_404 PASSED [ 43%]
+tests/framework/test_extractor.py::TestStatusCodeExtraction::test_extract_status_code_500 PASSED [ 45%]
+tests/framework/test_extractor.py::TestElapsedExtraction::test_extract_elapsed PASSED [ 47%]
+tests/framework/test_extractor.py::TestElapsedExtraction::test_extract_elapsed_zero PASSED [ 50%]
+tests/framework/test_extractor.py::TestDBExtraction::test_extract_from_single_row_dict PASSED [ 52%]
+tests/framework/test_extractor.py::TestDBExtraction::test_extract_from_list_of_rows PASSED [ 54%]
+tests/framework/test_extractor.py::TestDBExtraction::test_extract_multiple_columns PASSED [ 56%]
+tests/framework/test_extractor.py::TestDBExtraction::test_extract_nonexistent_column PASSED [ 58%]
+tests/framework/test_extractor.py::TestDBExtraction::test_extract_nonexistent_column_with_default PASSED [ 60%]
+tests/framework/test_extractor.py::TestDBExtraction::test_extract_from_none_rows PASSED [ 63%]
+tests/framework/test_extractor.py::TestDBExtraction::test_extract_from_empty_list PASSED [ 65%]
+tests/framework/test_extractor.py::TestAutoInference::test_infer_jsonpath_from_dollar_prefix PASSED [ 67%]
+tests/framework/test_extractor.py::TestAutoInference::test_infer_jsonpath_when_no_source_type PASSED [ 69%]
+tests/framework/test_extractor.py::TestAutoInference::test_infer_header_from_prefix FAILED [ 71%]
+tests/framework/test_extractor.py::TestAutoInference::test_unknown_source_type_falls_to_jsonpath PASSED [ 73%]
+tests/framework/test_extractor.py::TestDefaultFallback::test_default_on_none_result PASSED [ 76%]
+tests/framework/test_extractor.py::TestDefaultFallback::test_default_on_exception PASSED [ 78%]
+tests/framework/test_extractor.py::TestDefaultFallback::test_no_default_on_none_result PASSED [ 80%]
+tests/framework/test_extractor.py::TestDefaultFallback::test_extract_error_on_exception_without_default PASSED [ 82%]
+tests/framework/test_extractor.py::TestCombinedAndEdgeCases::test_combined_multiple_source_types PASSED [ 84%]
+tests/framework/test_extractor.py::TestCombinedAndEdgeCases::test_empty_extracts_list PASSED [ 86%]
+tests/framework/test_extractor.py::TestCombinedAndEdgeCases::test_empty_extracts_list_from_db PASSED [ 89%]
+tests/framework/test_extractor.py::TestCombinedAndEdgeCases::test_sql_column_with_exception_and_default PASSED [ 91%]
+tests/framework/test_extractor.py::TestCombinedAndEdgeCases::test_extract_none_status_code_with_default FAILED [ 93%]
+tests/framework/test_extractor.py::TestExtractError::test_extract_error_is_exception PASSED [ 95%]
+tests/framework/test_extractor.py::TestExtractError::test_extract_error_message PASSED [ 97%]
+tests/framework/test_extractor.py::TestExtractError::test_extract_error_with_cause PASSED [100%]
+
+================================== FAILURES ===================================
+_______________ TestAutoInference.test_infer_header_from_prefix _______________
+tests\framework\test_extractor.py:382: in test_infer_header_from_prefix
+    assert result["ctype"] == "application/json"
+           ^^^^^^^^^^^^^^^
+E   KeyError: 'ctype'
+---------------------------- Captured stdout call -----------------------------
+2026-06-05 10:44:04 [warning  ] variable_extract_failed        reason=value is None with no default var_name=ctype
+_____ TestCombinedAndEdgeCases.test_extract_none_status_code_with_default _____
+tests\framework\test_extractor.py:478: in test_extract_none_status_code_with_default
+    assert result["sc"] == 200
+E   assert 999 == 200
+---------------------------- Captured stdout call -----------------------------
+2026-06-05 10:44:05 [debug    ] variable_extracted_fallback    default=999 var_name=sc
+=========================== short test summary info ===========================
+FAILED tests/framework/test_extractor.py::TestAutoInference::test_infer_header_from_prefix - KeyError: 'ctype'
+FAILED tests/framework/test_extractor.py::TestCombinedAndEdgeCases::test_extract_none_status_code_with_default - assert 999 == 200
+======================== 2 failed, 44 passed in 0.48s =========================

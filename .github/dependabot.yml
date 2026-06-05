@@ -1,0 +1,21 @@
+version: 2
+
+updates:
+  - package-ecosystem: "pip"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:00"
+      timezone: "Asia/Shanghai"
+    target-branch: "develop"
+    open-pull-requests-limit: 10
+    labels:
+      - "dependencies"
+      - "security"
+    assignees:
+      - "maintainer"
+    commit-message:
+      prefix: "pip"
+      include: "scope"
+    versioning-strategy: increase-if-necessary

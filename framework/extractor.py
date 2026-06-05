@@ -44,18 +44,18 @@ class Extractor:
                 value = self._extract_single(response, item)
                 if value is not None:
                     results[item.var_name] = value
-                    logger.debug(f"提取变量: {item.var_name} = {value}")
+                    logger.debug("variable_extracted", var_name=item.var_name, source=item.source)
                 elif item.default is not None:
                     results[item.var_name] = item.default
-                    logger.debug(f"提取变量（默认值）: {item.var_name} = {item.default}")
+                    logger.debug("variable_extracted_default", var_name=item.var_name, default=item.default)
                 else:
-                    logger.warning(f"提取变量 '{item.var_name}' 失败: 值为 None 且无默认值")
+                    logger.warning("variable_extract_failed", var_name=item.var_name, reason="value is None with no default")
             except Exception as e:
                 if item.default is not None:
                     results[item.var_name] = item.default
-                    logger.debug(f"提取变量（异常回退默认值）: {item.var_name} = {item.default}")
+                    logger.debug("variable_extracted_fallback", var_name=item.var_name, default=item.default)
                 else:
-                    logger.error(f"提取变量 '{item.var_name}' 失败: {e}")
+                    logger.error("variable_extract_error", var_name=item.var_name, error=str(e))
                     raise ExtractError(f"提取变量 '{item.var_name}' 失败: {e}") from e
 
         return results
@@ -82,7 +82,7 @@ class Extractor:
                 if item.default is not None:
                     results[item.var_name] = item.default
                 else:
-                    logger.error(f"从 DB 提取变量 '{item.var_name}' 失败: {e}")
+                    logger.error("db_variable_extract_error", var_name=item.var_name, error=str(e))
 
         return results
 

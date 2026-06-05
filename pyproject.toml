@@ -34,7 +34,7 @@ quote-style = "double"
 indent-style = "space"
 
 [tool.pytest.ini_options]
-testpaths = ["testcases"]
+testpaths = ["tests", "testcases"]
 addopts = "-v --tb=short --strict-markers"
 markers = [
     "smoke: 冒烟测试",
@@ -66,3 +66,15 @@ log_cli = true
 log_cli_level = "INFO"
 log_cli_format = "%(asctime)s [%(levelname)-8s] %(name)s: %(message)s"
 log_cli_date_format = "%Y-%m-%d %H:%M:%S"
+
+[tool.coverage.run]
+source = ["framework"]
+omit = ["tests/*", "testcases/*", "doc/*"]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "if __name__ == .__main__.:",
+    "raise NotImplementedError",
+    "if TYPE_CHECKING:",
+]

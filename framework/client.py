@@ -1,4 +1,8 @@
-"""HTTP 客户端封装 — 基于 httpx 的请求引擎"""
+"""HTTP 客户端封装 — 基于 httpx 的请求引擎
+
+支持拦截器链：通过 add_interceptor() 注册 RequestInterceptor，
+在请求发送前后按洋葱模型依次执行 on_request / on_response。
+"""
 
 from __future__ import annotations
 
@@ -7,6 +11,9 @@ from typing import Any
 
 import httpx
 
+from framework.interceptors.auth import AuthInterceptor
+from framework.interceptors.base import RequestInterceptor
+from framework.interceptors.logging import LoggingInterceptor
 from framework.models import BodyType, HttpRequest, HttpResponse
 from framework.utils.file_loader import is_file_ref, load_file_ref
 from framework.utils.logger import Logger
@@ -55,6 +62,19 @@ class HttpClient:
         self._retry_delay = retry_delay
         self._retry_on_status = retry_on_status
 
+        # 拦截器链
+        self._interceptors: list[RequestInterceptor] = []
+        # 默认注册内置拦截器（保持向后兼容）
+        self.add_interceptor(AuthInterceptor())
+        self.add_interceptor(LoggingInterceptor())
+
+    def add_interceptor(self, interceptor: RequestInterceptor) -> None:
+        """注册拦截器。
+
+        拦截器按注册顺序执行 on_request，逆序执行 on_response（洋葱模型）。
+        """
+        self._interceptors.append(interceptor)
+
     def request(self, req: HttpRequest, variables: dict[str, Any] | None = None) -> HttpResponse:
         """发送 HTTP 请求
 
@@ -99,42 +119,26 @@ class HttpClient:
         if req.files:
             kwargs["files"] = self._build_files(req.files)
 
-        # 认证
-        if req.auth:
-            auth_type = req.auth.get("type", "bearer").lower()
-            if auth_type == "bearer":
-                headers["Authorization"] = f"Bearer {req.auth.get('token', '')}"
-            elif auth_type == "basic":
-                kwargs["auth"] = httpx.BasicAuth(
-                    req.auth.get("username", ""),
-                    req.auth.get("password", ""),
-                )
+        # ── 拦截器链：on_request（按注册顺序）──
+        context: dict[str, Any] = {}
+        for interceptor in self._interceptors:
+            req = interceptor.on_request(req, context)
+
+        # 合并拦截器设置的 httpx 级参数（如 BasicAuth）
+        httpx_kwargs = context.pop("httpx_kwargs", {})
+        kwargs.update(httpx_kwargs)
 
         # 发送请求（带重试）
-        logger.info(f">>> {req.method.value} {req.path}")
-        if req.body and logger.isEnabledFor(10):  # DEBUG
-            body_log = json.dumps(req.body, ensure_ascii=False, default=str)[:500]
-            body_log = Logger.mask_sensitive_str(body_log)
-            logger.debug(f"请求体: {body_log}")
-
-        # 脱敏后记录请求头（DEBUG 级别）
-        if logger.isEnabledFor(10):
-            safe_headers = Logger.mask_sensitive(dict(headers))
-            logger.debug(f"请求头: {safe_headers}")
-
         response = self._send_with_retry(**kwargs)
 
-        # 脱敏后记录响应头
-        if logger.isEnabledFor(10):
-            safe_resp_headers = Logger.mask_sensitive(dict(response.headers))
-            logger.debug(f"响应头: {safe_resp_headers}")
+        # 转换为内部 HttpResponse
+        http_resp = self._to_response(response, req)
 
-        logger.info(
-            f"<<< {response.status_code} {req.path} "
-            f"({response.elapsed.total_seconds() * 1000:.0f}ms)"
-        )
+        # ── 拦截器链：on_response（逆序，洋葱模型）──
+        for interceptor in reversed(self._interceptors):
+            http_resp = interceptor.on_response(http_resp, context)
 
-        return self._to_response(response, req)
+        return http_resp
 
     def get(self, path: str, **kwargs: Any) -> HttpResponse:
         kwargs.setdefault("method", "GET")

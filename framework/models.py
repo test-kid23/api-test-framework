@@ -248,8 +248,6 @@ class TestCase:
     setup: list[FixtureAction] = field(default_factory=list)
     teardown: list[FixtureAction] = field(default_factory=list)
 
-    source_file: str = ""
-    line_number: int = 0
     timeout: int | None = None
 
 
@@ -267,7 +265,6 @@ class TestSuite:
     teardown: list[FixtureAction] = field(default_factory=list)
     cases: list[TestCase] = field(default_factory=list)
     data_driven: list[dict[str, Any]] = field(default_factory=list)
-    source_file: str = ""
 
 
 # ==================== 配置 ====================

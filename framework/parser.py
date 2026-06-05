@@ -1,4 +1,9 @@
-"""YAML 用例解析器 — 解析 YAML 文件为结构化 TestCase/TestSuite 对象"""
+"""YAML 用例解析器 — 解析 YAML 文件为结构化 TestCase/TestSuite 对象
+
+解析流程：
+1. YAML 文件 → raw dict → ParsedSuite / ParsedCase（中间模型，承载 YAML 原始结构）
+2. ParsedSuite / ParsedCase → TestSuite / TestCase（领域模型，与 YAML 格式解耦）
+"""
 
 from __future__ import annotations
 
@@ -20,6 +25,7 @@ from framework.models import (
     WSConfig,
     WSMessage,
 )
+from framework.parser_models import ParsedCase, ParsedSuite
 from framework.utils.logger import Logger
 from framework.utils.template import TemplateEngine
 
@@ -50,8 +56,17 @@ class YAMLParser:
         # 模板替换在 runner 执行时按实际变量进行
         rendered_raw = raw
 
-        suite = self._parse_suite(rendered_raw, str(path))
-        logger.info(f"解析用例文件: {path.name}, 用例数: {len(suite.cases)}")
+        # Step 1: raw dict → ParsedSuite（YAML 中间模型）
+        parsed = self._to_parsed_suite(rendered_raw, str(path))
+        # Step 2: ParsedSuite → TestSuite（领域模型）
+        suite = self._convert_suite(parsed)
+
+        logger.info(
+            "file_parsed",
+            filename=path.name,
+            case_count=len(suite.cases),
+            suite_name=suite.name,
+        )
         return suite
 
     def parse_dir(self, dir_path: str, variables: dict[str, Any] | None = None) -> list[TestSuite]:
@@ -66,7 +81,7 @@ class YAMLParser:
                 suite = self.parse_file(str(yaml_file), variables)
                 suites.append(suite)
             except Exception as e:
-                logger.error(f"解析文件失败 {yaml_file}: {e}")
+                logger.error("parse_error", file=str(yaml_file), error=str(e))
 
         # 也支持 .yml 后缀
         for yml_file in sorted(path.rglob("*.yml")):
@@ -76,9 +91,9 @@ class YAMLParser:
                 suite = self.parse_file(str(yml_file), variables)
                 suites.append(suite)
             except Exception as e:
-                logger.error(f"解析文件失败 {yml_file}: {e}")
+                logger.error("parse_error", file=str(yml_file), error=str(e))
 
-        logger.info(f"目录解析完成: {dir_path}, 共 {len(suites)} 个套件")
+        logger.info("dir_parsed", dir=dir_path, suite_count=len(suites))
         return suites
 
     def collect(self, path: str, tags: list[str] | None = None) -> list[tuple[str, TestSuite]]:
@@ -103,19 +118,21 @@ class YAMLParser:
                 result.append((case.name, suite))
         return result
 
-    # ---------- 解析内部方法 ----------
+    # ═══════════════════════════════════════════════════════════════
+    # Step 1: raw dict → ParsedSuite / ParsedCase（YAML 中间模型）
+    # ═══════════════════════════════════════════════════════════════
 
-    def _parse_suite(self, raw: dict[str, Any], source_file: str) -> TestSuite:
-        """解析顶层套件配置"""
-        suite = TestSuite(
+    def _to_parsed_suite(self, raw: dict[str, Any], source_file: str) -> ParsedSuite:
+        """从 raw dict 构建 ParsedSuite（YAML 中间模型）"""
+        parsed = ParsedSuite(
             name=raw.get("name", "Unnamed Suite"),
             description=raw.get("description", ""),
             base_url=raw.get("base_url", ""),
             tags=raw.get("tags", []),
             priority=raw.get("priority", "P1"),
             variables=raw.get("variables", {}),
-            setup=self._parse_fixtures(raw.get("setup", [])),
-            teardown=self._parse_fixtures(raw.get("teardown", [])),
+            setup=raw.get("setup", []),
+            teardown=raw.get("teardown", []),
             data_driven=(
                 raw.get("data_driven", {}).get("parameters", [])
                 if isinstance(raw.get("data_driven"), dict)
@@ -126,63 +143,100 @@ class YAMLParser:
 
         # 解析用例列表（数据驱动展开）
         cases_raw = raw.get("cases", [])
-        if suite.data_driven:
+        if parsed.data_driven:
             import copy
 
-            for param_set in suite.data_driven:
+            for param_set in parsed.data_driven:
                 for case_raw in cases_raw:
-                    merged_vars = {**suite.variables, **param_set}
+                    merged_vars = {**parsed.variables, **param_set}
                     case_raw_copy = copy.deepcopy(case_raw)
-                    case = self._parse_case(case_raw_copy, suite)
-                    case.name = self._template.render(case.name, merged_vars)
-                    case.variables.update(param_set)
-                    suite.cases.append(case)
+                    parsed_case = self._to_parsed_case(case_raw_copy, parsed)
+                    parsed_case.name = self._template.render(parsed_case.name, merged_vars)
+                    parsed_case.variables.update(param_set)
+                    parsed.cases.append(parsed_case)
         else:
             for case_raw in cases_raw:
-                case = self._parse_case(case_raw, suite)
-                suite.cases.append(case)
+                parsed_case = self._to_parsed_case(case_raw, parsed)
+                parsed.cases.append(parsed_case)
 
-        return suite
+        return parsed
 
-    def _parse_case(self, raw: dict[str, Any], suite: TestSuite) -> TestCase:
-        """解析单个测试用例"""
-        # 合并标签（套件级 + 用例级）
-        tags = list(set(suite.tags + raw.get("tags", [])))
-
-        case = TestCase(
+    def _to_parsed_case(self, raw: dict[str, Any], suite: ParsedSuite) -> ParsedCase:
+        """从 raw dict 构建 ParsedCase（YAML 中间模型）"""
+        return ParsedCase(
             name=raw.get("name", "Unnamed Case"),
             description=raw.get("description", ""),
-            tags=tags,
+            tags=raw.get("tags", []),
             priority=raw.get("priority", suite.priority),
             skip=raw.get("skip", False),
             skip_if=raw.get("skip_if", ""),
             variables=raw.get("variables", {}),
-            setup=self._parse_fixtures(raw.get("setup", [])),
-            teardown=self._parse_fixtures(raw.get("teardown", [])),
+            request=raw.get("request"),
+            ws_config=raw.get("ws_config"),
+            expect=raw.get("expect", {}),
+            extract=raw.get("extract", {}),
+            db_assert=raw.get("db_assert", []),
+            setup=raw.get("setup", []),
+            teardown=raw.get("teardown", []),
             source_file=suite.source_file,
         )
 
+    # ═══════════════════════════════════════════════════════════════
+    # Step 2: ParsedSuite / ParsedCase → TestSuite / TestCase（领域模型）
+    # ═══════════════════════════════════════════════════════════════
+
+    def _convert_suite(self, parsed: ParsedSuite) -> TestSuite:
+        """将 ParsedSuite 转换为领域模型 TestSuite"""
+        suite = TestSuite(
+            name=parsed.name,
+            description=parsed.description,
+            base_url=parsed.base_url,
+            tags=parsed.tags,
+            priority=parsed.priority,
+            variables=parsed.variables,
+            setup=self._parse_fixtures(parsed.setup),
+            teardown=self._parse_fixtures(parsed.teardown),
+            data_driven=parsed.data_driven,
+        )
+
+        for parsed_case in parsed.cases:
+            case = self._convert_case(parsed_case, suite)
+            suite.cases.append(case)
+
+        return suite
+
+    def _convert_case(self, parsed: ParsedCase, suite: TestSuite) -> TestCase:
+        """将 ParsedCase 转换为领域模型 TestCase"""
+        tags = list(set(suite.tags + parsed.tags))
+
+        case = TestCase(
+            name=parsed.name,
+            description=parsed.description,
+            tags=tags,
+            priority=parsed.priority,
+            skip=parsed.skip,
+            skip_if=parsed.skip_if,
+            variables=parsed.variables,
+            setup=self._parse_fixtures(parsed.setup),
+            teardown=self._parse_fixtures(parsed.teardown),
+        )
+
         # 解析请求
-        req_raw = raw.get("request")
-        if req_raw:
-            case.request = self._parse_request(req_raw)
+        if parsed.request:
+            case.request = self._parse_request(parsed.request)
 
         # 解析 WebSocket 配置
-        ws_raw = raw.get("ws_config")
-        if ws_raw:
-            case.ws_config = self._parse_ws_config(ws_raw)
+        if parsed.ws_config:
+            case.ws_config = self._parse_ws_config(parsed.ws_config)
 
         # 解析断言
-        expect_raw = raw.get("expect", {})
-        case.assertions = self._parse_assertions(expect_raw)
+        case.assertions = self._parse_assertions(parsed.expect)
 
         # 解析提取
-        extract_raw = raw.get("extract", {})
-        case.extracts = self._parse_extracts(extract_raw)
+        case.extracts = self._parse_extracts(parsed.extract)
 
         # 解析数据库断言
-        db_assert_raw = raw.get("db_assert", [])
-        case.db_asserts = self._parse_db_asserts(db_assert_raw)
+        case.db_asserts = self._parse_db_asserts(parsed.db_assert)
 
         return case
 
@@ -192,7 +246,7 @@ class YAMLParser:
         try:
             method = HttpMethod(method_str)
         except ValueError:
-            logger.warning(f"未知 HTTP 方法: {method_str}，默认使用 GET")
+            logger.warning("unknown_http_method", method=method_str, fallback="GET")
             method = HttpMethod.GET
 
         body_type_str = raw.get("body_type", "json")
@@ -421,7 +475,7 @@ class YAMLParser:
                     setup=suite.setup,
                     teardown=suite.teardown,
                     cases=matching_cases,
-                    source_file=suite.source_file,
+                    data_driven=suite.data_driven,
                 )
                 filtered.append(new_suite)
         return filtered

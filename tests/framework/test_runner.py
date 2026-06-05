@@ -147,7 +147,7 @@ class TestHttpRouting:
             template_engine=MagicMock(),
             assertion_engine=MagicMock(),
             extractor=MagicMock(),
-            allure=MagicMock(),
+            report_adapter=MagicMock(),
             env=EnvConfig(name="test"),
         )
         case = make_http_case()
@@ -159,7 +159,7 @@ class TestHttpRouting:
             template_engine=MagicMock(),
             assertion_engine=MagicMock(),
             extractor=MagicMock(),
-            allure=MagicMock(),
+            report_adapter=MagicMock(),
             env=EnvConfig(name="test"),
         )
         case = make_ws_case()
@@ -171,7 +171,7 @@ class TestHttpRouting:
             template_engine=MagicMock(),
             assertion_engine=MagicMock(),
             extractor=MagicMock(),
-            allure=MagicMock(),
+            report_adapter=MagicMock(),
             env=EnvConfig(name="test"),
         )
         case = make_empty_case()
