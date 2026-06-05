@@ -9,6 +9,16 @@ from typing import Any
 # ==================== 枚举 ====================
 
 
+class CaseStatus(str, Enum):
+    """用例执行状态"""
+
+    PASS = "PASS"
+    FAIL = "FAIL"
+    SKIP = "SKIP"
+    TIMEOUT = "TIMEOUT"
+    ERROR = "ERROR"
+
+
 class HttpMethod(str, Enum):
     GET = "GET"
     POST = "POST"
@@ -296,6 +306,7 @@ class ProjectConfig:
     execution: dict[str, Any] = field(default_factory=dict)
     db: dict[str, dict[str, Any]] = field(default_factory=dict)
     fixtures: dict[str, Any] = field(default_factory=dict)
+    case_timeout: int = 300
 
 
 # ==================== 执行结果 ====================
@@ -307,6 +318,7 @@ class CaseResult:
 
     case_name: str
     passed: bool
+    status: CaseStatus = CaseStatus.PASS
     assertion_report: AssertionReport | None = None
     error: str | None = None
     request: HttpRequest | None = None

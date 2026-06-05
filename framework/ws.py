@@ -14,12 +14,32 @@ logger = Logger.get("ws")
 
 # 延迟导入 websockets（可选依赖）
 _has_websockets = False
+_websockets_version: tuple[int, ...] = (0,)
 try:
     import websockets
 
     _has_websockets = True
+    _websockets_version = tuple(
+        int(x) for x in websockets.__version__.split(".")[:2]
+    )
 except ImportError:
     pass
+
+
+def _ws_connect_kwargs(headers: dict[str, str], timeout: int) -> dict:
+    """构建 websockets.connect() 的关键字参数
+
+    兼容 websockets < 14（extra_headers）和 >= 14（additional_headers）。
+    """
+    kwargs: dict = {
+        "open_timeout": timeout,
+        "close_timeout": 5,
+    }
+    if _websockets_version >= (14,):
+        kwargs["additional_headers"] = headers
+    else:
+        kwargs["extra_headers"] = headers
+    return kwargs
 
 
 class WSClient:
@@ -42,12 +62,12 @@ class WSClient:
 
         logger.info(f"连接 WebSocket: {url}")
 
+        connect_kwargs = _ws_connect_kwargs(headers, self._config.timeout)
+
         try:
             async with websockets.connect(
                 url,
-                extra_headers=headers,
-                open_timeout=self._config.timeout,
-                close_timeout=5,
+                **connect_kwargs,
             ) as ws:
                 for msg_config in self._config.messages:
                     msg_type = msg_config.type

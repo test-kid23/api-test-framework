@@ -6,6 +6,7 @@
 
 - [特性总览](#特性总览)
 - [快速开始](#快速开始)
+- [API 服务](#api-服务)
 - [项目结构](#项目结构)
 - [用例编写指南](#用例编写指南)
 - [执行与运行](#执行与运行)
@@ -120,6 +121,87 @@ pytest -n 4 testcases/
 make report
 ```
 
+### 4. 启动 API 服务
+
+```bash
+# 安装 API 依赖
+pip install fastapi uvicorn[standard]
+
+# 开发模式（热重载）
+uvicorn api.main:app --reload --host 0.0.0.0 --port 8000
+
+# 生产模式
+uvicorn api.main:app --host 0.0.0.0 --port 8000 --workers 4
+
+# 访问 Swagger UI
+# http://localhost:8000/docs
+```
+
+---
+
+## API 服务
+
+框架提供基于 FastAPI 的 REST API 服务层，用于用例管理、执行触发和报告查询。
+
+### API 接口总览
+
+| 资源 | 方法 | 路径 | 说明 | 状态 |
+|------|------|------|------|------|
+| 健康检查 | `GET` | `/health` | 服务健康检查 | ✅ |
+| 用例 | `POST` | `/api/v1/cases` | 创建用例 | ✅ |
+| 用例 | `GET` | `/api/v1/cases` | 用例列表（分页+过滤） | ✅ |
+| 用例 | `GET` | `/api/v1/cases/{id}` | 查看用例详情 | ✅ |
+| 用例 | `PUT` | `/api/v1/cases/{id}` | 更新用例（版本递增） | ✅ |
+| 用例 | `DELETE` | `/api/v1/cases/{id}` | 删除用例 | ✅ |
+| 用例 | `GET` | `/api/v1/cases/{id}/versions` | 版本历史 | ✅ |
+| 套件 | `POST` `GET` `PUT` `DELETE` | `/api/v1/suites` | 套件 CRUD | 🔧 占位 |
+| 执行 | `POST` `GET` | `/api/v1/executions` | 触发执行 + 历史 | 🔧 占位 |
+| 报告 | `GET` | `/api/v1/reports` | 报告查询 + 趋势 | 🔧 占位 |
+
+### 服务目录结构
+
+```
+api/
+├── main.py               # FastAPI app 入口（CORS、路由、异常处理）
+├── dependencies.py        # 依赖注入 + 线程安全 InMemoryStore
+├── routers/
+│   ├── cases.py           # 用例 CRUD（完整实现）
+│   ├── suites.py          # 套件 CRUD（占位）
+│   ├── executions.py      # 执行触发/结果查询（占位）
+│   └── reports.py         # 报告查询/趋势/TopN（占位）
+└── schemas/
+    ├── common.py          # 通用：分页、错误/成功响应
+    ├── case.py            # 用例：CRUD 的请求/响应模型
+    ├── execution.py       # 执行：请求/响应模型
+    └── report.py          # 报告：列表/趋势/失败项模型
+```
+
+### 手工测试 API（curl）
+
+```bash
+# 创建用例
+curl -X POST http://localhost:8000/api/v1/cases \
+  -H "Content-Type: application/json" \
+  -d '{"name":"登录测试","tags":["smoke"],"priority":"P0","yaml_content":"name: test"}'
+
+# 查看列表
+curl http://localhost:8000/api/v1/cases
+
+# 按标签过滤
+curl "http://localhost:8000/api/v1/cases?tags=smoke&priority=P0"
+
+# 更新用例
+curl -X PUT http://localhost:8000/api/v1/cases/<id> \
+  -H "Content-Type: application/json" \
+  -d '{"priority":"P1","description":"更新后的描述"}'
+
+# 查看版本历史
+curl http://localhost:8000/api/v1/cases/<id>/versions
+
+# 删除用例
+curl -X DELETE http://localhost:8000/api/v1/cases/<id>
+```
+
 ---
 
 ## 项目结构
@@ -130,6 +212,11 @@ api-test-framework/
 │   ├── config.yaml               # 全局配置（HTTP/日志/报告/数据库等）
 │   ├── env.yaml                  # 多环境配置（dev/staging/production/local）
 │   └── env.local.yaml            # 本地覆盖（已 gitignore，存敏感信息）
+├── api/                          # FastAPI REST 服务层
+│   ├── main.py                   #   FastAPI app 入口（CORS、路由、异常处理）
+│   ├── dependencies.py           #   依赖注入 + 线程安全 InMemoryStore
+│   ├── routers/                  #   路由模块（cases/suites/executions/reports）
+│   └── schemas/                  #   Pydantic 请求/响应模型（v2）
 ├── framework/                    # 框架核心代码
 │   ├── runner.py                 # 测试执行引擎（策略路由 + 插件调度）
 │   ├── client.py                 # HTTP 客户端（httpx + 拦截器链）
@@ -182,7 +269,7 @@ api-test-framework/
 ├── requirements.txt              # 依赖
 ├── .pre-commit-config.yaml       # Git 提交前检查
 ├── .dockerignore                 # Docker 构建排除
-└── doc/                          # 文档
+└── docs/                         # 文档
     ├── architecture-review.md    #   架构评审报告
     ├── development-plan.md       #   开发计划
     └── coding-standards.md       #   编码规范
@@ -1335,6 +1422,8 @@ docker compose -f docker-compose.test.yml up
 | `pytest --collect-only` | 仅收集用例 |
 | `pytest --pdb` | 失败进入调试器 |
 | `pre-commit run --all-files` | 手动运行代码检查 |
+| `uvicorn api.main:app --reload` | 启动 API 服务（开发模式） |
+| `uvicorn api.main:app --workers 4` | 启动 API 服务（生产模式） |
 
 ---
 

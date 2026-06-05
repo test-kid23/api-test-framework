@@ -182,6 +182,35 @@ class NoExecutorFoundError(ExecutionError):
         self.case_name = case_name
 
 
+class CaseTimeoutError(ExecutionError):
+    """用例执行超时
+
+    用例在设定的超时时间内未完成执行时抛出。
+    用于 TestRunner.run_case() / arun_case() 超时控制。
+
+    Attributes:
+        case_name: 触发超时的用例名称。
+        timeout_seconds: 超时阈值（秒）。
+        current_step: 超时发生时正在执行的步骤描述。
+    """
+
+    def __init__(
+        self,
+        case_name: str,
+        timeout_seconds: int,
+        *,
+        current_step: str = "",
+        trace_id: str = "",
+    ) -> None:
+        msg = f"用例执行超时 [{case_name}]: 超过 {timeout_seconds}s 限制"
+        if current_step:
+            msg += f" (当前步骤: {current_step})"
+        super().__init__(msg, trace_id=trace_id)
+        self.case_name = case_name
+        self.timeout_seconds = timeout_seconds
+        self.current_step = current_step
+
+
 # ==================== 断言异常 ====================
 
 

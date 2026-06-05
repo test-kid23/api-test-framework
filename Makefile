@@ -9,7 +9,15 @@ help: ## 显示帮助信息
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-20s\033[0m %s\n", $$1, $$2}'
 
 install: ## 安装依赖
-	pip install -r requirements.txt
+	pip install -e ".[all]"
+
+lock: ## 锁定依赖版本（生成 requirements.lock）
+	pip install pip-tools
+	pip-compile pyproject.toml -o requirements.lock --extra all --strip-extras --resolver backtracking
+	@echo ">>> requirements.lock 已更新 <<<"
+
+sync: ## 从 lock 文件同步安装
+	pip-sync requirements.lock
 
 test: ## 运行所有测试
 	pytest --env=$(ENV) -v --alluredir=reports/allure-results

@@ -954,7 +954,7 @@ api-test-framework/
 ├── api/                    # FastAPI REST 服务层 (Phase 2+)
 ├── assertions/             # 内置断言操作符扩展
 ├── config/                 # 配置文件目录
-├── doc/                    # 项目文档
+├── docs/                   # 项目文档
 ├── framework/              # 核心框架代码
 │   ├── assertion/          # 断言引擎
 │   ├── executors/          # 步骤执行器（策略模式）

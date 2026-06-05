@@ -7,23 +7,30 @@
 - 通过 PluginManager 在关键生命周期点分发事件
 - 插件可按 priority 排序，高优先级插件（数值小）先执行
 - 插件间通过 PluginContext 共享数据
+
+超时控制：
+- 同步路径 (run_case): 在后台线程中执行用例，主线程 join 等待，超时返回 TIMEOUT
+- 异步路径 (arun_case): 使用 asyncio.wait_for() 包裹协程执行
+- 单个用例可覆盖全局 case_timeout（TestCase.timeout）
 """
 
 from __future__ import annotations
 
+import asyncio
+import threading
 import time
 from typing import Any
 
 from framework.assertion import AssertionEngine
 from framework.context import TestContext
 from framework.db import DBAsserter, DBConnectionManager, DBExecutor
-from framework.exceptions import NoExecutorFoundError
+from framework.exceptions import CaseTimeoutError, NoExecutorFoundError
 from framework.executors.base import StepExecutor
 from framework.executors.http_executor import HttpStepExecutor
-from framework.executors.ws_executor import WsStepExecutor
+from framework.executors.ws_async_executor import AsyncWsStepExecutor
 from framework.extractor import Extractor
 from framework.fixtures_loader import FixtureLoader
-from framework.models import CaseResult, EnvConfig, ProjectConfig, SuiteResult, TestCase, TestSuite
+from framework.models import CaseResult, CaseStatus, EnvConfig, ProjectConfig, SuiteResult, TestCase, TestSuite
 from framework.plugins.base import PluginBase
 from framework.plugins.manager import PluginContext, PluginManager
 from framework.report.base import NoopReportAdapter, ReportAdapter
@@ -99,10 +106,10 @@ class TestRunner:
             fixtures_config=config.fixtures,
         )
 
-        # StepExecutor 策略链（默认：WS → HTTP）
+        # StepExecutor 策略链（默认：WS(Async) → HTTP）
         if executors is None:
             executors = [
-                WsStepExecutor(self._template),
+                AsyncWsStepExecutor(self._template),
                 HttpStepExecutor(
                     http_client=http_client,
                     template_engine=self._template,
@@ -221,12 +228,67 @@ class TestRunner:
         return suite_result
 
     def run_case(self, case: TestCase, suite_variables: dict[str, Any]) -> CaseResult:
-        """执行单个测试用例
+        """执行单个测试用例（同步路径，带超时控制）
 
         策略路由：遍历 self._executors，找到首个 supports(case) 为 True 的
         executor 并调用其 execute 方法。找不到时抛出 NoExecutorFoundError。
+
+        超时控制：在后台线程执行用例，主线程带超时 join。超时阈值取
+        case.timeout 或 config.case_timeout。
+        """
+        timeout = case.timeout if case.timeout is not None else self._config.case_timeout
+
+        if timeout <= 0:
+            return self._do_run_case(case, suite_variables)
+
+        # ── 在后台线程执行用例，主线程带超时等待 ──
+        result_holder: dict[str, CaseResult | None] = {"value": None}
+        error_holder: dict[str, Exception | None] = {"exception": None}
+
+        def _execute() -> None:
+            try:
+                result_holder["value"] = self._do_run_case(case, suite_variables)
+            except Exception as e:
+                error_holder["exception"] = e
+
+        thread = threading.Thread(
+            target=_execute, daemon=True, name=f"case-{case.name}"
+        )
+        thread.start()
+        thread.join(timeout=timeout)
+
+        if thread.is_alive():
+            # 超时：后台线程仍在执行，标记为 TIMEOUT
+            self._cleanup_on_timeout(case)
+            elapsed_ms = timeout * 1000.0
+            logger.warning(
+                "case_timeout",
+                case_name=case.name,
+                timeout=timeout,
+                current_step=getattr(self, "_current_step", "unknown"),
+            )
+            return CaseResult(
+                case_name=case.name,
+                passed=False,
+                status=CaseStatus.TIMEOUT,
+                error=f"用例执行超时: 超过 {timeout}s",
+                elapsed_ms=elapsed_ms,
+            )
+
+        if error_holder["exception"] is not None:
+            raise error_holder["exception"]
+
+        return result_holder["value"]  # type: ignore[return-value]
+
+    def _do_run_case(self, case: TestCase, suite_variables: dict[str, Any]) -> CaseResult:
+        """执行单个测试用例的核心逻辑（供超时控制复用）
+
+        将原始 run_case() 的完整流程提取为独立方法，同时被同步和异步路径调用。
         """
         start_time = time.time()
+
+        # 记录当前步骤（供超时信息使用）
+        self._current_step = "start"
 
         # ── 绑定用例级 trace_id ──
         set_trace_id(case.name)
@@ -237,7 +299,9 @@ class TestRunner:
         # 检查是否跳过
         if case.skip:
             logger.info("case_skipped", case_name=case.name, reason="skip flag set")
-            result = CaseResult(case_name=case.name, passed=True, error="SKIPPED")
+            result = CaseResult(
+                case_name=case.name, passed=True, status=CaseStatus.SKIP, error="SKIPPED"
+            )
             self._plugin_manager.dispatch("case_end", case=case, result=result)
             clear_trace_id()
             return result
@@ -254,11 +318,12 @@ class TestRunner:
         # 将当前 merged vars 也写入 step 层供 executor 读取（保持兼容）
         self._context.get_variables().update(variables)
 
-        case_result = CaseResult(case_name=case.name, passed=True)
+        case_result = CaseResult(case_name=case.name, passed=True, status=CaseStatus.PASS)
 
         try:
             # 执行用例级 setup
             if case.setup:
+                self._current_step = "setup"
                 # ── 插件钩子：on_setup (before) ──
                 self._plugin_manager.dispatch(
                     "setup", phase="before", case=case, variables=variables
@@ -272,6 +337,7 @@ class TestRunner:
                 )
 
             # 策略路由：遍历 executors 找到匹配的执行器
+            self._current_step = "execute"
             matched = False
             for executor in self._executors:
                 if executor.supports(case):
@@ -284,6 +350,7 @@ class TestRunner:
 
             # 执行数据库断言
             if case.db_asserts and self._db_asserter:
+                self._current_step = "db_asserts"
                 for db_assert in case.db_asserts:
                     # ── 插件钩子：on_db_query (before) ──
                     self._plugin_manager.dispatch(
@@ -303,6 +370,7 @@ class TestRunner:
                     )
                     if not db_result.passed:
                         case_result.passed = False
+                        case_result.status = CaseStatus.FAIL
                         if case_result.error:
                             case_result.error += f"; DB断言失败: {db_result}"
                         else:
@@ -310,6 +378,7 @@ class TestRunner:
 
             # 执行用例级 teardown
             if case.teardown:
+                self._current_step = "teardown"
                 # ── 插件钩子：on_teardown (before) ──
                 self._plugin_manager.dispatch(
                     "teardown", phase="before", case=case, variables=variables
@@ -325,6 +394,7 @@ class TestRunner:
             raise  # 框架配置错误，直接向上传播，不做捕获
         except Exception as e:
             case_result.passed = False
+            case_result.status = CaseStatus.FAIL
             case_result.error = str(e)
             # ── 插件钩子：on_error ──
             self._plugin_manager.dispatch("error", error=e, case=case)
@@ -353,6 +423,227 @@ class TestRunner:
         clear_trace_id()
 
         return case_result
+
+    async def arun_case(
+        self, case: TestCase, suite_variables: dict[str, Any]
+    ) -> CaseResult:
+        """执行单个测试用例（异步路径，使用 asyncio.wait_for 超时控制）
+
+        在 asyncio 事件循环中执行，适用于 WebSocket 原生异步等场景。
+        """
+        timeout = case.timeout if case.timeout is not None else self._config.case_timeout
+
+        try:
+            if timeout > 0:
+                # asyncio.wait_for 在超时时取消内部协程并抛出 TimeoutError
+                result = await asyncio.wait_for(
+                    self._ado_run_case(case, suite_variables),
+                    timeout=timeout,
+                )
+            else:
+                result = await self._ado_run_case(case, suite_variables)
+        except asyncio.TimeoutError:
+            self._cleanup_on_timeout(case)
+            logger.warning(
+                "case_timeout_async",
+                case_name=case.name,
+                timeout=timeout,
+            )
+            return CaseResult(
+                case_name=case.name,
+                passed=False,
+                status=CaseStatus.TIMEOUT,
+                error=f"用例执行超时 (asyncio): 超过 {timeout}s",
+                elapsed_ms=timeout * 1000.0,
+            )
+
+        return result
+
+    async def _ado_run_case(
+        self, case: TestCase, suite_variables: dict[str, Any]
+    ) -> CaseResult:
+        """异步核心执行逻辑
+
+        - WebSocket 用例：使用 AsyncWsStepExecutor.aexecute() 原生异步执行，
+          避免 nest_asyncio / 线程池桥接带来的事件循环冲突。
+        - 其他用例（HTTP 等）：通过线程池桥接同步 _do_run_case。
+        """
+        # WS 用例 — 原生异步路径
+        if case.ws_config is not None:
+            return await self._ado_run_ws_case(case, suite_variables)
+
+        # 非 WS 用例 — 线程池桥接（保持兼容）
+        loop = asyncio.get_running_loop()
+        return await loop.run_in_executor(
+            None, self._do_run_case, case, suite_variables
+        )
+
+    async def _ado_run_ws_case(
+        self, case: TestCase, suite_variables: dict[str, Any]
+    ) -> CaseResult:
+        """WebSocket 用例的原生异步执行路径
+
+        与 _do_run_case 等价，但 executor 步骤通过 await aexecute() 原生执行，
+        不经过线程池桥接。setup / teardown / DB 断言等同步步骤在 async 上下文中
+        直接调用（均为非阻塞操作，不影响事件循环）。
+
+        在 Celery Worker / FastAPI 等纯 asyncio 环境中，此路径不产生事件循环冲突。
+        """
+        start_time = time.time()
+
+        self._current_step = "start"
+        set_trace_id(case.name)
+
+        self._plugin_manager.dispatch("case_start", case=case)
+
+        if case.skip:
+            logger.info("case_skipped", case_name=case.name, reason="skip flag set")
+            result = CaseResult(
+                case_name=case.name, passed=True, status=CaseStatus.SKIP, error="SKIPPED"
+            )
+            self._plugin_manager.dispatch("case_end", case=case, result=result)
+            clear_trace_id()
+            return result
+
+        variables = {**suite_variables, **case.variables}
+        self._context.init()
+        self._context.set_case_vars(variables)
+        self._context.start_step()
+        self._context.get_variables().update(variables)
+
+        case_result = CaseResult(case_name=case.name, passed=True, status=CaseStatus.PASS)
+
+        try:
+            # 用例级 setup（同步，在 async 上下文中安全）
+            if case.setup:
+                self._current_step = "setup"
+                self._plugin_manager.dispatch(
+                    "setup", phase="before", case=case, variables=variables
+                )
+                setup_vars = self._fixture_loader.run_setup(case.setup, variables)
+                variables.update(setup_vars)
+                self._context.get_variables().update(setup_vars)
+                self._plugin_manager.dispatch(
+                    "setup", phase="after", case=case, variables=variables
+                )
+
+            # ═══ 原生异步 WS 执行 ═══
+            self._current_step = "execute"
+            matched = False
+            for executor in self._executors:
+                if executor.supports(case):
+                    # AsyncWsStepExecutor 提供 aexecute() 原生异步方法
+                    if hasattr(executor, "aexecute"):
+                        case_result = await executor.aexecute(
+                            case, self._context, variables
+                        )
+                    else:
+                        # 降级：非 async executor 走同步路径
+                        loop = asyncio.get_running_loop()
+                        case_result = await loop.run_in_executor(
+                            None, executor.execute, case, self._context, variables
+                        )
+                    matched = True
+                    break
+
+            if not matched:
+                raise NoExecutorFoundError(case.name)
+
+            # DB 断言（同步）
+            if case.db_asserts and self._db_asserter:
+                self._current_step = "db_asserts"
+                for db_assert in case.db_asserts:
+                    self._plugin_manager.dispatch(
+                        "db_query",
+                        phase="before",
+                        case=case,
+                        sql=db_assert.sql,
+                    )
+                    db_result = self._db_asserter.assert_query(db_assert, variables)
+                    self._plugin_manager.dispatch(
+                        "db_query",
+                        phase="after",
+                        case=case,
+                        sql=db_assert.sql,
+                        result=db_result,
+                    )
+                    if not db_result.passed:
+                        case_result.passed = False
+                        case_result.status = CaseStatus.FAIL
+                        if case_result.error:
+                            case_result.error += f"; DB断言失败: {db_result}"
+                        else:
+                            case_result.error = f"DB断言失败: {db_result}"
+
+            # 用例级 teardown（同步）
+            if case.teardown:
+                self._current_step = "teardown"
+                self._plugin_manager.dispatch(
+                    "teardown", phase="before", case=case, variables=variables
+                )
+                self._fixture_loader.run_teardown(case.teardown, variables)
+                self._plugin_manager.dispatch(
+                    "teardown", phase="after", case=case, variables=variables
+                )
+
+        except NoExecutorFoundError:
+            self._plugin_manager.dispatch("case_end", case=case, result=case_result)
+            raise
+        except Exception as e:
+            case_result.passed = False
+            case_result.status = CaseStatus.FAIL
+            case_result.error = str(e)
+            self._plugin_manager.dispatch("error", error=e, case=case)
+            logger.error(
+                "case_execution_error", case_name=case.name, error=str(e), exc_info=True
+            )
+
+        case_result.elapsed_ms = (time.time() - start_time) * 1000
+
+        self._context.end_step(promote=True)
+        case_result.extracted_vars = self._context.get_all_variables()
+
+        self._plugin_manager.dispatch("case_end", case=case, result=case_result)
+
+        status = "PASS" if case_result.passed else "FAIL"
+        logger.info(
+            "case_completed",
+            case_name=case.name,
+            status=status,
+            elapsed_ms=round(case_result.elapsed_ms),
+            error=case_result.error if not case_result.passed else None,
+        )
+
+        clear_trace_id()
+
+        return case_result
+
+    def _cleanup_on_timeout(self, case: TestCase) -> None:
+        """超时后的资源清理
+
+        - 分发超时事件通知插件
+        - 清除 trace_id 避免日志串扰
+        - 不清除 http_client 连接（共享资源，不应在单用例超时时关闭）
+
+        Note:
+            后台线程可能仍在执行，但由于设为 daemon，进程退出时会终止。
+            不与后台线程争用共享状态（context、client），只做通知和标记。
+        """
+        try:
+            # 通知插件超时事件
+            self._plugin_manager.dispatch(
+                "error",
+                error=CaseTimeoutError(
+                    case_name=case.name,
+                    timeout_seconds=case.timeout or self._config.case_timeout,
+                    current_step=getattr(self, "_current_step", "unknown"),
+                ),
+                case=case,
+            )
+        except Exception:
+            pass  # 清理阶段不容忍二次异常
+        finally:
+            clear_trace_id()
 
     def _build_suite_variables(self, suite: TestSuite) -> dict[str, Any]:
         """构建套件级变量（合并环境 + 套件）"""

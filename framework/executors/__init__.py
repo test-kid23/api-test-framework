@@ -2,6 +2,7 @@
 
 from framework.executors.base import StepExecutor
 from framework.executors.http_executor import HttpStepExecutor
-from framework.executors.ws_executor import WsStepExecutor
+from framework.executors.ws_async_executor import AsyncWsStepExecutor
+from framework.executors.ws_executor import WsStepExecutor  # noqa: F401  # deprecated, kept for compat
 
-__all__ = ["StepExecutor", "HttpStepExecutor", "WsStepExecutor"]
+__all__ = ["StepExecutor", "HttpStepExecutor", "AsyncWsStepExecutor", "WsStepExecutor"]

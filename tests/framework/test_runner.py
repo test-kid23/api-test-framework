@@ -18,7 +18,7 @@ from framework.context import TestContext
 from framework.exceptions import NoExecutorFoundError
 from framework.executors.base import StepExecutor
 from framework.executors.http_executor import HttpStepExecutor
-from framework.executors.ws_executor import WsStepExecutor
+from framework.executors.ws_async_executor import AsyncWsStepExecutor
 from framework.models import (
     CaseResult,
     EnvConfig,
@@ -104,7 +104,7 @@ def make_empty_case(**kwargs) -> TestCase:
 
 
 class TestDefaultExecutors:
-    """验证 TestRunner 默认注册了 WS 和 HTTP 执行器"""
+    """验证 TestRunner 默认注册了 WS(Async) 和 HTTP 执行器"""
 
     def test_default_executors_include_ws_and_http(
         self, project_config, env_config, http_client, test_context
@@ -116,7 +116,7 @@ class TestDefaultExecutors:
             context=test_context,
         )
         assert len(runner._executors) == 2
-        assert isinstance(runner._executors[0], WsStepExecutor)
+        assert isinstance(runner._executors[0], AsyncWsStepExecutor)
         assert isinstance(runner._executors[1], HttpStepExecutor)
 
     def test_ws_executor_has_priority_over_http(
@@ -129,7 +129,7 @@ class TestDefaultExecutors:
             context=test_context,
         )
         # WS executor 应在 HTTP executor 之前（优先级更高）
-        assert isinstance(runner._executors[0], WsStepExecutor)
+        assert isinstance(runner._executors[0], AsyncWsStepExecutor)
         assert isinstance(runner._executors[1], HttpStepExecutor)
 
 
@@ -184,20 +184,20 @@ class TestHttpRouting:
 
 
 class TestWsRouting:
-    """验证 WebSocket TestCase 路由到 WsStepExecutor"""
+    """验证 WebSocket TestCase 路由到 AsyncWsStepExecutor"""
 
     def test_supports_ws_case(self):
-        ws_exec = WsStepExecutor(template_engine=MagicMock())
+        ws_exec = AsyncWsStepExecutor(template_engine=MagicMock())
         case = make_ws_case()
         assert ws_exec.supports(case) is True
 
     def test_does_not_support_http_case(self):
-        ws_exec = WsStepExecutor(template_engine=MagicMock())
+        ws_exec = AsyncWsStepExecutor(template_engine=MagicMock())
         case = make_http_case()
         assert ws_exec.supports(case) is False
 
     def test_does_not_support_empty_case(self):
-        ws_exec = WsStepExecutor(template_engine=MagicMock())
+        ws_exec = AsyncWsStepExecutor(template_engine=MagicMock())
         case = make_empty_case()
         assert ws_exec.supports(case) is False
 

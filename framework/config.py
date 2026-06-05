@@ -293,6 +293,7 @@ class ConfigLoader:
             execution=raw.get("execution", {}),
             db=raw.get("db", {}),
             fixtures=raw.get("fixtures", {}),
+            case_timeout=raw.get("case_timeout", 300),
         )
 
     def _build_env_config(self, name: str, raw: dict[str, Any]) -> EnvConfig:

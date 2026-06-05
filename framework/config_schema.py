@@ -121,3 +121,9 @@ class AutotestConfig(BaseModel):
     report: ReportConfig = Field(default_factory=ReportConfig, description="报告配置")
     execution: ExecutionConfig = Field(default_factory=ExecutionConfig, description="执行配置")
     db: DBConfig = Field(default_factory=DBConfig, description="数据库配置")
+    case_timeout: int = Field(
+        default=300,
+        ge=1,
+        le=3600,
+        description="全局默认用例超时时间（秒），范围 1~3600。单个用例可通过 TestCase.timeout 覆盖",
+    )
