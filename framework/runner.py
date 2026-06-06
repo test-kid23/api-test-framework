@@ -65,10 +65,12 @@ class TestRunner:
         plugin_manager: PluginManager | None = None,
         plugins: list[PluginBase] | None = None,
         auto_discover_plugins: bool = True,
+        async_http_client: Any = None,  # AsyncHttpClient
     ) -> None:
         self._config = config
         self._env = env
         self._http_client = http_client
+        self._async_http_client = async_http_client
         self._context = context or TestContext()
         self._template = TemplateEngine()
         self._assertion_engine = AssertionEngine()
@@ -118,6 +120,7 @@ class TestRunner:
                     report_adapter=self._report_adapter,
                     env=env,
                     plugin_manager=self._plugin_manager,
+                    async_http_client=self._async_http_client,
                 ),
             ]
         self._executors: list[StepExecutor] = executors
@@ -464,24 +467,29 @@ class TestRunner:
     ) -> CaseResult:
         """异步核心执行逻辑
 
-        - WebSocket 用例：使用 AsyncWsStepExecutor.aexecute() 原生异步执行，
-          避免 nest_asyncio / 线程池桥接带来的事件循环冲突。
-        - 其他用例（HTTP 等）：通过线程池桥接同步 _do_run_case。
+        路由策略：
+        - WebSocket 用例：AsyncWsStepExecutor.aexecute() 原生异步执行
+        - HTTP 用例（有 async_http_client 时）：HttpStepExecutor.aexecute() 原生异步执行
+        - 其他用例（无 async executor）：线程池桥接同步 _do_run_case
         """
-        # WS 用例 — 原生异步路径
-        if case.ws_config is not None:
-            return await self._ado_run_ws_case(case, suite_variables)
+        # WS 用例 / 有 async_http_client 的 HTTP 用例 — 原生异步路径
+        use_async = (
+            case.ws_config is not None
+            or self._async_http_client is not None
+        )
+        if use_async:
+            return await self._ado_run_case_async(case, suite_variables)
 
-        # 非 WS 用例 — 线程池桥接（保持兼容）
+        # 纯同步 fallback — 线程池桥接
         loop = asyncio.get_running_loop()
         return await loop.run_in_executor(
             None, self._do_run_case, case, suite_variables
         )
 
-    async def _ado_run_ws_case(
+    async def _ado_run_case_async(
         self, case: TestCase, suite_variables: dict[str, Any]
     ) -> CaseResult:
-        """WebSocket 用例的原生异步执行路径
+        """用例的原生异步执行路径（WebSocket / HTTP / 其他支持 aexecute 的协议）
 
         与 _do_run_case 等价，但 executor 步骤通过 await aexecute() 原生执行，
         不经过线程池桥接。setup / teardown / DB 断言等同步步骤在 async 上下文中
@@ -527,18 +535,18 @@ class TestRunner:
                     "setup", phase="after", case=case, variables=variables
                 )
 
-            # ═══ 原生异步 WS 执行 ═══
+            # ═══ 原生异步执行（WS / HTTP）════
             self._current_step = "execute"
             matched = False
             for executor in self._executors:
                 if executor.supports(case):
-                    # AsyncWsStepExecutor 提供 aexecute() 原生异步方法
+                    # 支持 aexecute() 的执行器直接 await（AsyncWsStepExecutor / HttpStepExecutor）
                     if hasattr(executor, "aexecute"):
                         case_result = await executor.aexecute(
                             case, self._context, variables
                         )
                     else:
-                        # 降级：非 async executor 走同步路径
+                        # 降级：非 async executor 走同步路径（线程池桥接）
                         loop = asyncio.get_running_loop()
                         case_result = await loop.run_in_executor(
                             None, executor.execute, case, self._context, variables

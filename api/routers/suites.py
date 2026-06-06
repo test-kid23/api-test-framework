@@ -1,4 +1,4 @@
-"""测试套件 CRUD 路由（预留）
+"""测试套件 CRUD 路由
 
 接口:
 - POST   /api/v1/suites        创建套件
@@ -7,26 +7,28 @@
 - PUT    /api/v1/suites/{id}   更新套件
 - DELETE /api/v1/suites/{id}   删除套件
 
-当前 Phase 2 T2-1 阶段为占位实现，仅支持基础内存 CRUD。
-完整的套件-Case 关联、data-driven 配置等将在 T2-3 后完善。
+注意：TestSuiteModel 的 ORM 模型中无 tags/case_ids 列，响应中不返回这些字段。
 """
 
 from __future__ import annotations
 
+import json
 import uuid
-from datetime import datetime, timezone
 from typing import Any, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel, Field
+from sqlalchemy.ext.asyncio import AsyncSession
 
-from api.dependencies import InMemoryStore, get_store
+from api.dependencies import get_db_session
 from api.schemas.common import (
     MessageResponse,
     PaginatedResponse,
     PaginationMeta,
     SuccessResponse,
 )
+from framework.persistence.models.test_suite import TestSuiteModel
+from framework.persistence.repositories.suite_repo import SuiteRepository
 
 router = APIRouter(prefix="/api/v1/suites", tags=["suites"])
 
@@ -60,11 +62,8 @@ class SuiteResponse(BaseModel):
     id: str
     name: str
     description: str = ""
-    tags: list[str] = []
-    config: dict[str, Any] = {}
-    case_ids: list[str] = []
-    created_at: datetime
-    updated_at: datetime
+    created_at: str
+    updated_at: str
 
 
 class SuiteListItem(BaseModel):
@@ -73,28 +72,32 @@ class SuiteListItem(BaseModel):
     id: str
     name: str
     description: str = ""
-    tags: list[str] = []
-    case_count: int = 0
-    created_at: datetime
-    updated_at: datetime
+    created_at: str
+    updated_at: str
 
 
 # ── Helpers ───────────────────────────────────────────────
 
 
-def _suite_to_response(record: dict) -> SuiteResponse:
-    return SuiteResponse(**record)
+def _orm_to_response(model: TestSuiteModel) -> SuiteResponse:
+    """将 ORM 模型转换为 API 响应。"""
+    return SuiteResponse(
+        id=str(model.id),
+        name=model.name,
+        description=model.description or "",
+        created_at=model.created_at.isoformat() if model.created_at else "",
+        updated_at=model.updated_at.isoformat() if model.updated_at else "",
+    )
 
 
-def _suite_to_list_item(record: dict) -> SuiteListItem:
+def _orm_to_list_item(model: TestSuiteModel) -> SuiteListItem:
+    """将 ORM 模型转换为列表项响应。"""
     return SuiteListItem(
-        id=record["id"],
-        name=record["name"],
-        description=record.get("description", ""),
-        tags=record.get("tags", []),
-        case_count=len(record.get("case_ids", [])),
-        created_at=record["created_at"],
-        updated_at=record["updated_at"],
+        id=str(model.id),
+        name=model.name,
+        description=model.description or "",
+        created_at=model.created_at.isoformat() if model.created_at else "",
+        updated_at=model.updated_at.isoformat() if model.updated_at else "",
     )
 
 
@@ -109,21 +112,17 @@ def _suite_to_list_item(record: dict) -> SuiteListItem:
 )
 async def create_suite(
     body: SuiteCreateRequest,
-    store: InMemoryStore = Depends(get_store),
+    session: AsyncSession = Depends(get_db_session),
 ):
-    now = datetime.now(timezone.utc)
-    record = {
-        "id": uuid.uuid4().hex[:12],
-        "name": body.name,
-        "description": body.description,
-        "tags": body.tags,
-        "config": body.config,
-        "case_ids": body.case_ids,
-        "created_at": now,
-        "updated_at": now,
-    }
-    created = store.create_suite(record)
-    return SuccessResponse(data=_suite_to_response(created))
+    repo = SuiteRepository(session)
+    model = TestSuiteModel(
+        name=body.name,
+        description=body.description,
+        config=json.dumps(body.config, ensure_ascii=False) if body.config else None,
+    )
+    created = await repo.create(model)
+    await session.commit()
+    return SuccessResponse(data=_orm_to_response(created))
 
 
 # ── GET /suites ──────────────────────────────────────────
@@ -137,10 +136,16 @@ async def create_suite(
 async def list_suites(
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=20, ge=1, le=100),
-    store: InMemoryStore = Depends(get_store),
+    session: AsyncSession = Depends(get_db_session),
 ):
-    items, total = store.list_suites(page=page, page_size=page_size)
-    list_items = [_suite_to_list_item(r) for r in items]
+    repo = SuiteRepository(session)
+    offset = (page - 1) * page_size
+    items, total = await repo.list(
+        offset=offset,
+        limit=page_size,
+        order_by=TestSuiteModel.updated_at.desc(),
+    )
+    list_items = [_orm_to_list_item(m) for m in items]
     meta = PaginationMeta(
         page=page,
         page_size=page_size,
@@ -160,12 +165,18 @@ async def list_suites(
 )
 async def get_suite(
     suite_id: str,
-    store: InMemoryStore = Depends(get_store),
+    session: AsyncSession = Depends(get_db_session),
 ):
-    record = store.get_suite(suite_id)
-    if record is None:
+    try:
+        uid = uuid.UUID(suite_id)
+    except ValueError:
         raise HTTPException(status_code=404, detail="套件不存在")
-    return SuccessResponse(data=_suite_to_response(record))
+
+    repo = SuiteRepository(session)
+    model = await repo.get(uid)
+    if model is None:
+        raise HTTPException(status_code=404, detail="套件不存在")
+    return SuccessResponse(data=_orm_to_response(model))
 
 
 # ── PUT /suites/{suite_id} ───────────────────────────────
@@ -179,15 +190,34 @@ async def get_suite(
 async def update_suite(
     suite_id: str,
     body: SuiteUpdateRequest,
-    store: InMemoryStore = Depends(get_store),
+    session: AsyncSession = Depends(get_db_session),
 ):
     update_data = body.model_dump(exclude_unset=True)
     if not update_data:
         raise HTTPException(status_code=400, detail="无更新字段")
-    record = store.update_suite(suite_id, update_data)
-    if record is None:
+
+    try:
+        uid = uuid.UUID(suite_id)
+    except ValueError:
         raise HTTPException(status_code=404, detail="套件不存在")
-    return SuccessResponse(data=_suite_to_response(record))
+
+    repo = SuiteRepository(session)
+    model = await repo.get(uid)
+    if model is None:
+        raise HTTPException(status_code=404, detail="套件不存在")
+
+    if body.name is not None:
+        model.name = body.name
+    if body.description is not None:
+        model.description = body.description
+    if body.config is not None:
+        model.config = json.dumps(body.config, ensure_ascii=False)
+
+    # tags 和 case_ids 在 ORM 中不存在，忽略
+
+    await repo.update(model)
+    await session.commit()
+    return SuccessResponse(data=_orm_to_response(model))
 
 
 # ── DELETE /suites/{suite_id} ────────────────────────────
@@ -200,9 +230,17 @@ async def update_suite(
 )
 async def delete_suite(
     suite_id: str,
-    store: InMemoryStore = Depends(get_store),
+    session: AsyncSession = Depends(get_db_session),
 ):
-    deleted = store.delete_suite(suite_id)
+    try:
+        uid = uuid.UUID(suite_id)
+    except ValueError:
+        raise HTTPException(status_code=404, detail="套件不存在")
+
+    repo = SuiteRepository(session)
+    deleted = await repo.delete_by_id(uid)
     if not deleted:
         raise HTTPException(status_code=404, detail="套件不存在")
+
+    await session.commit()
     return MessageResponse(message=f"套件 {suite_id} 已删除")

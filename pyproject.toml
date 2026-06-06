@@ -84,7 +84,7 @@ all = [
 ]
 
 [project.scripts]
-autotest = "cli:app"
+autotest = "framework.cli:app"
 
 [tool.setuptools.packages.find]
 include = ["framework*", "assertions*", "api*"]

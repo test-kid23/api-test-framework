@@ -4,6 +4,10 @@
 Phase 2 T2-2 完成后将替换为 SQLAlchemy AsyncSession。
 
 报告模块（T2-4）已接入真实数据库，通过 get_db_session() 注入 AsyncSession。
+
+T2-7 异步执行支持：
+- create_runner(): 创建 TestRunner（含 AsyncHttpClient），供 executions 路由使用
+- parse_yaml_case(): 将存储的 YAML 内容字符串解析为 TestCase 对象
 """
 
 from __future__ import annotations
@@ -15,22 +19,37 @@ from copy import deepcopy
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
+import yaml
 from pydantic import ValidationError
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 
 from api.schemas.case import CaseResponse
+from framework.client import AsyncHttpClient, HttpClient
 from framework.config import ConfigLoader
+from framework.context import TestContext
+from framework.db import DBConnectionManager
+from framework.models import EnvConfig, ProjectConfig, TestCase, TestSuite
+from framework.parser import YAMLParser
 from framework.persistence.database import create_async_engine, create_async_session_factory
+from framework.report.base import NoopReportAdapter
+from framework.runner import TestRunner
+from framework.utils.logger import Logger
 
 
-# ==================== 内存数据存储 ====================
+# ==================== 内存数据存储（已废弃） ====================
+#
+# InMemoryStore 在路由层已被 SQLAlchemy Repository 替代。
+# 保留类定义仅为测试兼容（部分测试可能仍引用 reset_store）。
+# 新代码请使用 get_db_session() + 对应的 Repository 类。
+#
+# Deprecated since: Phase 2 T2-2 路由层切换到数据库。
 
 
 class InMemoryStore:
-    """线程安全的内存数据存储
+    """[废弃] 线程安全的内存数据存储
 
-    用于 Phase 2 第一阶段的无 DB 开发阶段。
-    T2-2 完成后替换为 SQLAlchemy Repository 实现。
+    路由层已切换至 SQLAlchemy Repository 实现。
+    保留此类仅用于测试场景，请勿在新路由中使用。
     """
 
     def __init__(self) -> None:
@@ -180,6 +199,15 @@ class InMemoryStore:
         with self._lock:
             return deepcopy(self._executions.get(exec_id))
 
+    def update_execution(self, exec_id: str, updates: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        """更新执行记录的部分字段（线程安全）"""
+        with self._lock:
+            existing = self._executions.get(exec_id)
+            if existing is None:
+                return None
+            existing.update(deepcopy(updates))
+            return deepcopy(existing)
+
     def list_executions(
         self, page: int = 1, page_size: int = 20
     ) -> tuple[list[Dict[str, Any]], int]:
@@ -294,3 +322,161 @@ async def get_db_session() -> AsyncGenerator[AsyncSession, None]:
             raise
         finally:
             await session.close()
+
+
+def create_independent_session() -> AsyncSession:
+    """创建独立数据库会话（用于后台 asyncio.Task，非请求范围）。
+
+    与 get_db_session 不同，此函数不使用 FastAPI 依赖注入模式。
+    返回的 session 由调用方负责 commit / rollback / close。
+    不会自动回滚或关闭 — 请确保在 try/finally 中处理。
+    注意：此函数为同步函数（async_sessionmaker() 调用本身不需要 await），
+    调用时无需 await。
+
+    Usage:
+        session = create_independent_session()
+        try:
+            # ... database operations ...
+            await session.commit()
+        except Exception:
+            await session.rollback()
+            raise
+        finally:
+            await session.close()
+    """
+    global _session_factory
+    if _session_factory is None:
+        with _db_lock:
+            if _session_factory is None:
+                _init_db()
+
+    assert _session_factory is not None
+    return _session_factory()
+
+
+# ==================== Runner 工厂（T2-7 异步执行支持） ====================
+
+_runner_cache: dict[str, TestRunner] = {}
+_runner_cache_lock = threading.Lock()
+_log = Logger.get("api.dependencies")
+
+
+def create_runner(env_name: str = "dev") -> TestRunner:
+    """创建 TestRunner 实例（含 AsyncHttpClient 支持）
+
+    通过缓存复用 runner 实例（按环境隔离），避免每次执行都重新创建连接池。
+
+    Args:
+        env_name: 环境名称（dev/staging/production）
+
+    Returns:
+        已配置的 TestRunner 实例，同时包含同步 HttpClient 和异步 AsyncHttpClient
+    """
+    global _runner_cache
+
+    with _runner_cache_lock:
+        if env_name in _runner_cache:
+            return _runner_cache[env_name]
+
+        # 加载配置
+        loader = ConfigLoader()
+        project_config, env_config = loader.load(env_name)
+
+        # 创建同步 HTTP 客户端
+        http_client = HttpClient(
+            config=project_config.http, base_url=env_config.base_url
+        )
+
+        # 创建异步 HTTP 客户端
+        async_http_client = AsyncHttpClient(
+            config=project_config.http, base_url=env_config.base_url
+        )
+
+        # 创建 DB 管理器（可选）
+        db_manager = DBConnectionManager()
+
+        # 创建 runner（注入异步客户端）
+        runner = TestRunner(
+            config=project_config,
+            env=env_config,
+            http_client=http_client,
+            db_manager=db_manager,
+            async_http_client=async_http_client,
+            report_adapter=NoopReportAdapter(),
+        )
+
+        _runner_cache[env_name] = runner
+        _log.info("runner_created", env=env_name)
+        return runner
+
+
+def invalidate_runner_cache(env_name: str | None = None) -> None:
+    """清除 runner 缓存（配置热加载时调用）
+
+    Args:
+        env_name: 指定环境名，为 None 时清除全部
+    """
+    global _runner_cache
+    with _runner_cache_lock:
+        if env_name is None:
+            _runner_cache.clear()
+        elif env_name in _runner_cache:
+            # 关闭旧客户端释放连接
+            runner = _runner_cache.pop(env_name)
+            try:
+                runner._http_client.close()
+            except Exception:
+                pass
+            try:
+                # AsyncHttpClient 的关闭需要在事件循环中执行，
+                # 这里仅从缓存中移除，由下次 GC 处理
+                pass
+            except Exception:
+                pass
+
+
+def parse_yaml_case(yaml_content: str) -> TestCase:
+    """将 YAML 内容字符串解析为 TestCase 对象
+
+    支持两种格式：
+    1. 完整套件格式（含 cases 列表）— 取第一个 case
+    2. 单用例格式（直接是 case 定义）— 直接解析
+
+    Args:
+        yaml_content: YAML 格式的测试用例内容
+
+    Returns:
+        解析后的 TestCase 对象
+
+    Raises:
+        ValueError: 无法解析时抛出
+    """
+    raw = yaml.safe_load(yaml_content)
+    if not isinstance(raw, dict):
+        raise ValueError("YAML 内容格式错误（应为字典）")
+
+    parser = YAMLParser()
+
+    # 情况 1: 完整套件格式 — 取第一个 case
+    if "cases" in raw:
+        # 构建最小化 suite 结构
+        from framework.parser_models import ParsedCase, ParsedSuite
+
+        parsed_suite = ParsedSuite(
+            name=raw.get("name", "API Execution"),
+            base_url=raw.get("base_url", ""),
+            variables=raw.get("variables", {}),
+        )
+        cases_raw = raw.get("cases", [])
+        if not cases_raw:
+            raise ValueError("套件中没有定义用例 (cases 为空)")
+        first_case_raw = cases_raw[0]
+        parsed_case = parser._to_parsed_case(first_case_raw, parsed_suite)
+        return parser._convert_case(parsed_case, TestSuite(name=""))
+
+    # 情况 2: 单用例格式
+    from framework.parser_models import ParsedCase, ParsedSuite
+
+    parsed_suite = ParsedSuite(name="Single Case Execution")
+    parsed_case = parser._to_parsed_case(raw, parsed_suite)
+    return parser._convert_case(parsed_case, TestSuite(name=""))

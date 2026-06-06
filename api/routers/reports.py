@@ -6,20 +6,22 @@
 - GET /api/v1/reports/trends       趋势数据
 - GET /api/v1/reports/top-failures Top N 失败用例
 
-报告列表仍使用 InMemoryStore（与执行记录联动），
-趋势和 Top N 失败已接入真实数据库 ReportService。
+所有接口已切换到数据库查询。
+趋势和 Top N 失败使用 ReportService（已有实现）。
 """
 
 from __future__ import annotations
 
+import json
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from api.dependencies import InMemoryStore, get_db_session, get_store
+from api.dependencies import get_db_session
 from api.schemas.common import (
     PaginatedResponse,
     PaginationMeta,
@@ -32,9 +34,24 @@ from api.schemas.report import (
     TrendItem,
     TrendResponse,
 )
+from framework.persistence.models.execution import ExecutionModel
+from framework.persistence.models.report import ReportModel
 from framework.persistence.services.report_service import ReportService
 
 router = APIRouter(prefix="/api/v1/reports", tags=["reports"])
+
+
+# ── Helpers ───────────────────────────────────────────────
+
+
+def _parse_summary(summary_json: str | None) -> dict:
+    """从 ReportModel.summary JSON 字段提取统计信息。"""
+    if not summary_json:
+        return {}
+    try:
+        return json.loads(summary_json)
+    except (json.JSONDecodeError, TypeError):
+        return {}
 
 
 # ── GET /reports ──────────────────────────────────────────
@@ -49,25 +66,62 @@ async def list_reports(
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=20, ge=1, le=100),
     env: Optional[str] = Query(default=None, description="按环境过滤"),
-    store: InMemoryStore = Depends(get_store),
+    session: AsyncSession = Depends(get_db_session),
 ):
-    """分页查询报告列表，可按环境过滤。"""
-    items, total = store.list_reports(page=page, page_size=page_size, env=env)
-    report_items = [
-        ReportListItem(
-            id=r.get("id", ""),
-            execution_id=r.get("execution_id", ""),
-            execution_name=r.get("execution_name", ""),
-            status=r.get("status", "PENDING"),
-            total_cases=r.get("total_cases", 0),
-            passed=r.get("passed", 0),
-            failed=r.get("failed", 0),
-            pass_rate=r.get("pass_rate", 0.0),
-            env=r.get("env", "dev"),
-            created_at=r.get("created_at"),
-        )
-        for r in items
+    """分页查询报告列表，可按环境过滤。
+
+    通过 JOIN ReportModel 与 ExecutionModel 获取完整数据，
+    统计字段从 ReportModel.summary JSON 反序列化。
+    """
+    # 构建查询
+    cols = [
+        ReportModel.id,
+        ReportModel.execution_id,
+        ReportModel.summary,
+        ReportModel.created_at,
+        ExecutionModel.status,
+        ExecutionModel.env,
     ]
+    stmt = (
+        select(*cols)
+        .join(ExecutionModel, ReportModel.execution_id == ExecutionModel.id)
+    )
+
+    if env:
+        stmt = stmt.where(ExecutionModel.env == env)
+
+    # 计数
+    count_stmt = select(func.count()).select_from(stmt.subquery())
+    total = (await session.execute(count_stmt)).scalar_one()
+
+    # 分页 + 排序
+    offset = (page - 1) * page_size
+    stmt = stmt.order_by(ReportModel.created_at.desc()).offset(offset).limit(page_size)
+    result = await session.execute(stmt)
+    rows = result.all()
+
+    report_items: list[ReportListItem] = []
+    for row in rows:
+        summary = _parse_summary(row.summary)
+        report_items.append(
+            ReportListItem(
+                id=str(row.id),
+                execution_id=str(row.execution_id),
+                execution_name=f"exec-{str(row.execution_id)[:12]}",
+                status=row.status or "PENDING",
+                total_cases=summary.get("total", 0),
+                passed=summary.get("passed", 0),
+                failed=summary.get("failed", 0),
+                pass_rate=(
+                    (summary.get("passed", 0) / summary["total"] * 100)
+                    if summary.get("total", 0) > 0
+                    else 0.0
+                ),
+                env=row.env or "dev",
+                created_at=row.created_at,
+            )
+        )
+
     meta = PaginationMeta(
         page=page,
         page_size=page_size,
