@@ -47,7 +47,6 @@ jobs:
       - name: Create required directories
         run: |
           mkdir -p reports/allure-results
-          mkdir -p allure-history
           mkdir -p reports/coverage
 
       - name: Run unit tests with coverage
@@ -79,20 +78,57 @@ jobs:
           name: allure-results-py${{ matrix.python-version }}
           path: reports/allure-results/
 
-      - name: Generate Allure Report
-        uses: simple-elf/allure-report-action@v1
-        if: always()
-        with:
-          allure_results: reports/allure-results
-          allure_history: allure-history
-          keep_reports: 20
+  # ──────────────────────────────────────────────
+  # Deploy Allure Report（测试矩阵全部完成后执行）
+  # ──────────────────────────────────────────────
+  deploy-report:
+    needs: test
+    runs-on: ubuntu-latest
+    if: always()
+    steps:
+      - uses: actions/checkout@v4
 
-      - name: Deploy report to GitHub Pages
+      - name: Download Allure Results (Python 3.11)
+        uses: actions/download-artifact@v4
+        with:
+          name: allure-results-py3.11
+          path: reports/allure-results-py311
+
+      - name: Download Allure Results (Python 3.12)
+        uses: actions/download-artifact@v4
+        with:
+          name: allure-results-py3.12
+          path: reports/allure-results-py312
+
+      - name: Merge Allure Results
+        run: |
+          mkdir -p merged-allure-results
+          if [ -d "reports/allure-results-py311" ] && [ "$(ls -A reports/allure-results-py311 2>/dev/null)" ]; then
+            cp reports/allure-results-py311/* merged-allure-results/ 2>/dev/null || true
+          fi
+          if [ -d "reports/allure-results-py312" ] && [ "$(ls -A reports/allure-results-py312 2>/dev/null)" ]; then
+            cp reports/allure-results-py312/* merged-allure-results/ 2>/dev/null || true
+          fi
+          echo "Merged $(ls -1 merged-allure-results/ 2>/dev/null | wc -l) result files"
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Generate Allure Report
+        run: |
+          npm install -g allure-commandline
+          mkdir -p allure-history
+          allure generate merged-allure-results --clean -o allure-history
+          echo "Allure report generated to allure-history/"
+
+      - name: Deploy to GitHub Pages
         uses: peaceiris/actions-gh-pages@v4
-        if: always()
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           publish_dir: allure-history
+          keep_files: false
 
   # ──────────────────────────────────────────────
   # Security Scan（在测试矩阵全部完成后执行）
