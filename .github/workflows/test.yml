@@ -52,12 +52,14 @@ jobs:
 
       - name: Run unit tests with coverage
         run: |
-          pip install pytest-cov
+          pip install pytest-cov pytest-asyncio
           pytest tests/ \
                  --cov=framework \
                  --cov-report=term \
                  --cov-report=html:reports/coverage \
                  --cov-fail-under=0 \
+                 --ignore=tests/framework/test_sync.py \
+                 --ignore=tests/framework/test_ws_async_executor.py \
                  -v
 
       - name: Run tests

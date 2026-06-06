@@ -17,7 +17,9 @@ from unittest.mock import MagicMock
 
 import pytest
 import pytest_asyncio
-import websockets
+
+pytest.importorskip("websockets", reason="websockets 为可选依赖，当前环境未安装")
+import websockets  # noqa: E402
 
 from framework.context import TestContext
 from framework.executors.ws_async_executor import AsyncWsStepExecutor

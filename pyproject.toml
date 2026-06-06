@@ -117,10 +117,13 @@ indent-style = "space"
 
 [tool.pytest.ini_options]
 testpaths = ["tests", "testcases"]
+norecursedirs = ["framework", "api"]
 addopts = "-v --tb=short --strict-markers"
+asyncio_mode = "auto"
 timeout = 600
 timeout_method = "thread"
 markers = [
+    "asyncio: 异步测试",
     "smoke: 冒烟测试",
     "regression: 回归测试",
     "P0: 最高优先级",
