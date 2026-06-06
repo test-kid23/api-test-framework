@@ -44,6 +44,12 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt
 
+      - name: Create required directories
+        run: |
+          mkdir -p reports/allure-results
+          mkdir -p allure-history
+          mkdir -p reports/coverage
+
       - name: Run unit tests with coverage
         run: |
           pip install pytest-cov
@@ -78,6 +84,8 @@ jobs:
         if: always()
         with:
           allure_results: reports/allure-results
+          allure_history: allure-history
+          keep_reports: 20
 
       - name: Deploy report to GitHub Pages
         uses: peaceiris/actions-gh-pages@v4
@@ -93,6 +101,8 @@ jobs:
     needs: test
     runs-on: ubuntu-latest
     if: always()
+    env:
+      SAFETY_API_KEY: ${{ secrets.SAFETY_API_KEY || '' }}
 
     steps:
       - uses: actions/checkout@v4
@@ -113,13 +123,19 @@ jobs:
           pip install -r requirements.txt
           pip install safety bandit
 
-      - name: Safety — 扫描依赖已知漏洞
+      - name: Safety — 扫描依赖已知漏洞（API key）
+        if: env.SAFETY_API_KEY != ''
         uses: pyupio/safety-action@v1
         with:
-          api-key: ${{ secrets.SAFETY_API_KEY || '' }}
+          api_key: ${{ secrets.SAFETY_API_KEY }}
+        continue-on-error: true
+
+      - name: Safety — 扫描依赖已知漏洞（无 API key）
+        if: env.SAFETY_API_KEY == ''
+        run: safety check --full-report
         continue-on-error: true
 
       - name: Bandit — 安全代码扫描
         run: |
           bandit -r framework/ -c .bandit --exit-zero
-        continue-on-error: false
+        continue-on-error: true

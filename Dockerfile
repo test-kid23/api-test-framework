@@ -20,7 +20,7 @@ COPY . .
 RUN pip install --no-cache-dir -e ".[all]"
 
 # ── 运行时目录 ──
-RUN mkdir -p reports logs
+RUN mkdir -p reports/allure-results reports/coverage logs allure-history
 
 # ── 入口 ──
 ENTRYPOINT ["pytest"]
