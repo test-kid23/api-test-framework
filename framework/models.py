@@ -306,6 +306,8 @@ class ProjectConfig:
     execution: dict[str, Any] = field(default_factory=dict)
     db: dict[str, dict[str, Any]] = field(default_factory=dict)
     fixtures: dict[str, Any] = field(default_factory=dict)
+    persistence: dict[str, Any] = field(default_factory=dict)
+    settings: dict[str, Any] = field(default_factory=dict)
     case_timeout: int = 300
 
 

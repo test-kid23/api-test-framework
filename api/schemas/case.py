@@ -117,3 +117,34 @@ class CaseQueryParams(BaseModel):
         min_length=1,
         description="按名称/描述模糊搜索",
     )
+
+
+# ==================== 导入请求/响应 ====================
+
+
+class CaseImportRequest(BaseModel):
+    """OpenAPI / Swagger 导入请求"""
+
+    spec_url: str = Field(
+        ...,
+        min_length=1,
+        description="OpenAPI spec 的 URL 或本地文件路径",
+        examples=["https://petstore3.swagger.io/api/v3/openapi.json"],
+    )
+    suite_name: Optional[str] = Field(
+        default=None,
+        min_length=1,
+        max_length=255,
+        description="导入后的套件名称，不指定则使用 spec info.title",
+    )
+
+
+class CaseImportResult(BaseModel):
+    """导入结果"""
+
+    total_discovered: int = Field(..., description="发现的接口总数")
+    total_imported: int = Field(..., description="成功导入的用例数")
+    total_skipped: int = Field(default=0, description="跳过的用例数")
+    suite_name: str = Field(..., description="生成的套件名称")
+    case_ids: list[str] = Field(default_factory=list, description="导入的用例 ID 列表")
+    errors: list[str] = Field(default_factory=list, description="导入过程中的错误信息")

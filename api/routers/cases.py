@@ -1,12 +1,13 @@
 """用例 CRUD 路由
 
 接口:
-- POST   /api/v1/cases        创建用例
-- GET    /api/v1/cases        列表查询（分页+过滤）
-- GET    /api/v1/cases/{id}   查询单个用例
-- PUT    /api/v1/cases/{id}   更新用例
-- DELETE /api/v1/cases/{id}   删除用例
-- GET    /api/v1/cases/{id}/versions  版本历史
+- POST   /api/v1/cases               创建用例
+- GET    /api/v1/cases               列表查询（分页+过滤）
+- GET    /api/v1/cases/{id}          查询单个用例
+- PUT    /api/v1/cases/{id}          更新用例
+- DELETE /api/v1/cases/{id}          删除用例
+- GET    /api/v1/cases/{id}/versions 版本历史
+- POST   /api/v1/cases/import        从 OpenAPI spec 导入用例
 """
 
 from __future__ import annotations
@@ -20,6 +21,8 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from api.dependencies import InMemoryStore, get_store
 from api.schemas.case import (
     CaseCreateRequest,
+    CaseImportRequest,
+    CaseImportResult,
     CaseListItem,
     CaseQueryParams,
     CaseResponse,
@@ -33,6 +36,7 @@ from api.schemas.common import (
     PaginationMeta,
     SuccessResponse,
 )
+from framework.importers.openapi_parser import OpenAPICaseParser, testcase_to_yaml_content
 
 router = APIRouter(prefix="/api/v1/cases", tags=["cases"])
 
@@ -232,3 +236,82 @@ async def list_case_versions(
             detail={"error": "用例不存在", "detail": [{"loc": ["case_id"], "msg": f"ID '{case_id}' 不存在或无版本记录", "type": "not_found"}]},
         )
     return SuccessResponse(data=[_case_to_response(v) for v in reversed(versions)])
+
+
+# ── POST /cases/import ────────────────────────────────────
+
+
+@router.post(
+    "/import",
+    response_model=SuccessResponse[CaseImportResult],
+    status_code=status.HTTP_201_CREATED,
+    summary="从 OpenAPI spec 导入用例",
+    responses={
+        201: {"description": "导入成功"},
+        400: {"model": ErrorResponse, "description": "spec 无效或解析失败"},
+    },
+)
+async def import_cases(
+    body: CaseImportRequest,
+    store: InMemoryStore = Depends(get_store),
+):
+    """从 OpenAPI 3.x / Swagger 规范 URL 或本地文件导入测试用例。
+
+    解析 spec 中的每个 path + method 组合，自动生成包含请求示例、
+    状态码断言和 Content-Type 断言的测试用例，并存储到用例管理系统中。
+    """
+    parser = OpenAPICaseParser()
+
+    try:
+        suite = parser.parse_from_url(body.spec_url, suite_name=body.suite_name)
+    except (ValueError, FileNotFoundError) as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={
+                "error": "spec 解析失败",
+                "detail": [{"loc": ["spec_url"], "msg": str(e), "type": "parse_error"}],
+            },
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail={
+                "error": "导入过程异常",
+                "detail": [{"loc": ["spec_url"], "msg": str(e), "type": "internal_error"}],
+            },
+        )
+
+    imported_ids: list[str] = []
+    errors: list[str] = []
+
+    for case in suite.cases:
+        try:
+            yaml_content = testcase_to_yaml_content(case)
+            now = datetime.now(timezone.utc)
+            record = {
+                "id": uuid.uuid4().hex[:12],
+                "name": case.name,
+                "description": case.description,
+                "tags": case.tags,
+                "priority": case.priority,
+                "yaml_content": yaml_content,
+                "timeout": case.timeout,
+                "version": 1,
+                "created_at": now,
+                "updated_at": now,
+            }
+            created = store.create_case(record)
+            imported_ids.append(created["id"])
+        except Exception as e:
+            errors.append(f"[{case.name}] {str(e)}")
+
+    result = CaseImportResult(
+        total_discovered=len(suite.cases),
+        total_imported=len(imported_ids),
+        total_skipped=len(suite.cases) - len(imported_ids),
+        suite_name=suite.name,
+        case_ids=imported_ids,
+        errors=errors,
+    )
+
+    return SuccessResponse(data=result)

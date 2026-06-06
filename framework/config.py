@@ -293,6 +293,8 @@ class ConfigLoader:
             execution=raw.get("execution", {}),
             db=raw.get("db", {}),
             fixtures=raw.get("fixtures", {}),
+            persistence=raw.get("persistence", {}),
+            settings=raw.get("settings", {}),
             case_timeout=raw.get("case_timeout", 300),
         )
 

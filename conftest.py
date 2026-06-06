@@ -139,7 +139,7 @@ def _persistence(request: pytest.FixtureRequest) -> Generator[dict[str, Any], No
         return
 
     # 持久化开关：关闭时跳过所有数据库操作
-    if not config.persistence.enabled:
+    if not config.persistence.get("enabled", True):
         yield {}
         return
 
