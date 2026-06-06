@@ -52,7 +52,6 @@ jobs:
 
       - name: Run unit tests with coverage
         run: |
-          pip install pytest-cov pytest-asyncio
           pytest tests/ \
                  --cov=framework \
                  --cov-report=term \
@@ -60,9 +59,10 @@ jobs:
                  --cov-fail-under=0 \
                  --ignore=tests/framework/test_sync.py \
                  --ignore=tests/framework/test_ws_async_executor.py \
+                 --alluredir=reports/allure-results \
                  -v
 
-      - name: Run tests
+      - name: Run integration tests
         env:
           ENV: ${{ github.event.inputs.environment || 'staging' }}
           DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
@@ -75,42 +75,28 @@ jobs:
                  -v
         continue-on-error: true
 
-      - name: Upload Allure Results
-        uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: allure-results-py${{ matrix.python-version }}
-          path: reports/allure-results/
-
-  # ──────────────────────────────────────────────
-  # Deploy Allure Report（测试矩阵全部完成后执行）
-  # ──────────────────────────────────────────────
-  deploy-report:
-    needs: test
-    runs-on: ubuntu-latest
-    if: always()
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Download Allure Results
-        uses: actions/download-artifact@v4
-        with:
-          name: allure-results-py3.12
-          path: reports/allure-results
-
+      # ── Allure Report (same job, no cross-job artifact dependency) ──
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: '20'
 
       - name: Generate Allure Report
+        if: always()
         run: |
           npm install -g allure-commandline
           mkdir -p allure-history
-          allure generate reports/allure-results --clean -o allure-history
-          echo "Allure report generated to allure-history/"
+          if [ "$(ls -A reports/allure-results 2>/dev/null)" ]; then
+            allure generate reports/allure-results --clean -o allure-history
+            echo "Allure report generated to allure-history/"
+          else
+            echo "No allure results found, skipping report generation"
+            mkdir -p allure-history
+            echo "<html><body><h1>No test results available</h1></body></html>" > allure-history/index.html
+          fi
 
       - name: Deploy to GitHub Pages
+        if: always()
         uses: peaceiris/actions-gh-pages@v4
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
@@ -118,7 +104,7 @@ jobs:
           keep_files: false
 
   # ──────────────────────────────────────────────
-  # Security Scan（在测试矩阵全部完成后执行）
+  # Security Scan（在测试完成后执行）
   # ──────────────────────────────────────────────
   security-scan:
     needs: test
