@@ -490,7 +490,13 @@ async def get_async_session() -> AsyncGenerator[AsyncSession, None]:
         yield session
 ```
 
-### 6.4 迁移
+### 6.4 豁免：测试引擎 Raw SQL
+
+**DBExecutor 的 raw SQL 执行不适用 Repository 模式。**
+
+`framework/db.py` 中 `DBExecutor.execute()` 直接使用 `engine.connect()` 执行 raw SQL 是测试引擎的功能需求——用户在 YAML 测试用例中编写的 `sql_column` 提取本身就是自由 SQL，不属于"业务数据操作"。此类 raw SQL 执行作为例外，不强制走 Repository。
+
+### 6.5 迁移
 
 所有表结构变更通过 **Alembic** 管理，禁止手动修改数据库：
 
@@ -566,6 +572,8 @@ import structlog
 
 logger = structlog.get_logger(__name__)
 ```
+
+> **封装层保留说明**：项目当前使用 `Logger.get("xxx")`（`framework/utils/logger.py`）作为 structlog 的统一封装，底层已确保使用 structlog 引擎并自动绑定 trace_id。此封装层保留，不强制要求改为直接调用 `structlog.get_logger()`。
 
 ### 8.2 trace_id
 

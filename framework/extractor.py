@@ -5,17 +5,12 @@ from __future__ import annotations
 import re
 from typing import Any
 
+from framework.exceptions import ExtractorError
 from framework.models import ExtractItem, HttpResponse
 from framework.utils.jsonpath_util import extract_value
 from framework.utils.logger import Logger
 
 logger = Logger.get("extractor")
-
-
-class ExtractError(Exception):
-    """变量提取异常"""
-
-    pass
 
 
 class Extractor:
@@ -50,13 +45,20 @@ class Extractor:
                     logger.debug("variable_extracted_default", var_name=item.var_name, default=item.default)
                 else:
                     logger.warning("variable_extract_failed", var_name=item.var_name, reason="value is None with no default")
+            except ExtractorError:
+                raise
             except Exception as e:
                 if item.default is not None:
                     results[item.var_name] = item.default
                     logger.debug("variable_extracted_fallback", var_name=item.var_name, default=item.default)
                 else:
                     logger.error("variable_extract_error", var_name=item.var_name, error=str(e))
-                    raise ExtractError(f"提取变量 '{item.var_name}' 失败: {e}") from e
+                    raise ExtractorError(
+                        f"提取变量 '{item.var_name}' 失败: {e}",
+                        var_name=item.var_name,
+                        source=item.source,
+                        source_type=item.source_type,
+                    ) from e
 
         return results
 

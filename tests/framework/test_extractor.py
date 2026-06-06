@@ -4,7 +4,7 @@
 1. 6 种 source_type：jsonpath / header / body_regex / status_code / elapsed / sql_column
 2. 自动类型推断（auto-inference）
 3. 默认值回退（default fallback）
-4. ExtractError 异常
+4. ExtractorError 异常（继承自 AutoTestException）
 5. extract_from_db 数据库结果提取
 6. 边界情况
 """
@@ -13,7 +13,8 @@ from __future__ import annotations
 
 import pytest
 
-from framework.extractor import Extractor, ExtractError
+from framework.exceptions import AutoTestException, ExtractorError
+from framework.extractor import Extractor
 from framework.models import ExtractItem, HttpResponse
 
 
@@ -417,7 +418,7 @@ class TestDefaultFallback:
         assert "missing" not in result
 
     def test_extract_error_on_exception_without_default(self, extractor: Extractor) -> None:
-        """提取异常 + 无 default → 抛出 ExtractError"""
+        """提取异常 + 无 default → 抛出 ExtractorError"""
         response = HttpResponse(
             status_code=200,
             headers={},
@@ -428,7 +429,7 @@ class TestDefaultFallback:
         )
         # 使用无效正则触发 re.error
         item = ExtractItem(var_name="val", source=r"[bad_regex", source_type="body_regex")
-        with pytest.raises(ExtractError) as exc_info:
+        with pytest.raises(ExtractorError) as exc_info:
             extractor.extract(response, [item])
         assert "val" in str(exc_info.value)
 
@@ -485,22 +486,22 @@ class TestCombinedAndEdgeCases:
 
 
 class TestExtractError:
-    """验证 ExtractError 异常类"""
+    """验证 ExtractorError 异常类（继承自 AutoTestException）"""
 
-    def test_extract_error_is_exception(self) -> None:
-        """ExtractError 应是标准 Exception 子类"""
-        assert issubclass(ExtractError, Exception)
+    def test_extract_error_inherits_from_autotest_exception(self) -> None:
+        """ExtractorError 应是 AutoTestException 子类"""
+        assert issubclass(ExtractorError, AutoTestException)
 
     def test_extract_error_message(self) -> None:
-        err = ExtractError("变量提取失败: key not found")
+        err = ExtractorError("变量提取失败: key not found")
         assert "变量提取失败" in str(err)
         assert "key not found" in str(err)
 
     def test_extract_error_with_cause(self) -> None:
-        """ExtractError 支持异常链"""
+        """ExtractorError 支持异常链"""
         try:
             raise ValueError("original error")
         except ValueError as cause:
-            err = ExtractError("提取失败: token")
+            err = ExtractorError("提取失败: token")
             err.__cause__ = cause
             assert err.__cause__ is not None

@@ -61,7 +61,20 @@ class BodyType(str, Enum):
 
 @dataclass
 class HttpRequest:
-    """HTTP 请求数据模型"""
+    """HTTP 请求数据模型
+
+    Attributes:
+        method: HTTP 方法 (GET/POST/PUT/DELETE/PATCH/HEAD/OPTIONS)。
+        path: 请求路径（相对于 base_url）。
+        headers: 请求头字典。
+        params: URL 查询参数。
+        body: 请求体内容。
+        body_type: 请求体编码类型 (json/form/multipart/raw/none)。
+        timeout: 单次请求超时秒数（为 None 时使用全局默认）。
+        verify_ssl: 是否校验 SSL 证书。
+        files: 文件上传路径映射。
+        auth: 认证信息 (username/password)。
+    """
 
     method: HttpMethod
     path: str
@@ -77,7 +90,17 @@ class HttpRequest:
 
 @dataclass
 class HttpResponse:
-    """HTTP 响应数据模型"""
+    """HTTP 响应数据模型
+
+    Attributes:
+        status_code: HTTP 状态码。
+        headers: 响应头字典。
+        body: 解析后的响应体（JSON 自动解析为 dict/list，失败时保留原始文本）。
+        elapsed_ms: 请求耗时（毫秒）。
+        size_bytes: 响应体字节数。
+        url: 实际请求 URL。
+        request_body: 请求体快照（用于日志/报告）。
+    """
 
     status_code: int
     headers: dict[str, str]
@@ -93,7 +116,15 @@ class HttpResponse:
 
 @dataclass
 class WSMessage:
-    """WebSocket 消息模型"""
+    """WebSocket 消息模型
+
+    Attributes:
+        type: 消息方向 (send/receive/close)。
+        data: 消息内容（文本或二进制）。
+        opcode: WebSocket 操作码。
+        timeout: 接收消息超时秒数。
+        expect: 期望收到的消息字段及值。
+    """
 
     type: str  # send / receive / close
     data: str | bytes = ""
@@ -104,7 +135,15 @@ class WSMessage:
 
 @dataclass
 class WSConfig:
-    """WebSocket 配置"""
+    """WebSocket 配置
+
+    Attributes:
+        url: WebSocket 服务端点 URL。
+        headers: 连接请求头。
+        timeout: 连接超时秒数。
+        messages: 发送/接收的消息序列。
+        close_after: 是否在所有消息完成后自动关闭连接。
+    """
 
     url: str
     headers: dict[str, str] = field(default_factory=dict)
@@ -115,7 +154,14 @@ class WSConfig:
 
 @dataclass
 class WSResult:
-    """WebSocket 执行结果"""
+    """WebSocket 执行结果
+
+    Attributes:
+        received_messages: 接收到的消息列表。
+        errors: 执行过程中的错误列表。
+        total_sent: 发送消息总数。
+        total_received: 接收消息总数。
+    """
 
     received_messages: list[str | bytes] = field(default_factory=list)
     errors: list[str] = field(default_factory=list)
@@ -132,7 +178,15 @@ class WSResult:
 
 @dataclass
 class AssertItem:
-    """单个断言项"""
+    """单个断言项
+
+    Attributes:
+        path: 断言目标路径（status_code/response_time/body.xxx/headers.xxx/$.jsonpath）。
+        expected: 期望值。
+        operator: 断言操作符（eq/ne/gt/lt/contains/matches 等）。
+        message: 自定义失败消息。
+        ignore_case: 字符串比较时是否忽略大小写。
+    """
 
     path: str
     expected: Any
@@ -143,7 +197,16 @@ class AssertItem:
 
 @dataclass
 class AssertResult:
-    """单个断言结果"""
+    """单个断言结果
+
+    Attributes:
+        passed: 断言是否通过。
+        path: 断言目标路径。
+        expected: 期望值。
+        actual: 实际值。
+        operator: 断言操作符。
+        message: 失败时的错误消息。
+    """
 
     passed: bool
     path: str
@@ -162,7 +225,11 @@ class AssertResult:
 
 @dataclass
 class AssertionReport:
-    """用例断言报告"""
+    """用例断言报告
+
+    Attributes:
+        results: 所有断言项的逐条结果。
+    """
 
     results: list[AssertResult] = field(default_factory=list)
 
@@ -187,7 +254,14 @@ class AssertionReport:
 
 @dataclass
 class ExtractItem:
-    """变量提取项"""
+    """变量提取项
+
+    Attributes:
+        var_name: 提取结果存储的变量名。
+        source: 提取表达式（JSONPath/header 名/正则等）。
+        source_type: 提取源类型（jsonpath/header/body_regex/status_code/elapsed/sql_column）。
+        default: 提取失败时的默认值。
+    """
 
     var_name: str
     source: str
@@ -202,7 +276,15 @@ class ExtractItem:
 
 @dataclass
 class DBAction:
-    """数据库操作"""
+    """数据库操作
+
+    Attributes:
+        connection: 数据源名称。
+        sql: SQL 语句（支持模板变量）。
+        params: SQL 参数绑定。
+        extract: 从结果中提取的变量列表。
+        fetch_one: True 返回单行，False 返回多行。
+    """
 
     connection: str
     sql: str
@@ -213,7 +295,14 @@ class DBAction:
 
 @dataclass
 class DBAssertItem:
-    """数据库断言项"""
+    """数据库断言项
+
+    Attributes:
+        connection: 数据源名称。
+        sql: 断言的 SQL 查询。
+        expect: 期望的字段名→值映射。
+        fetch_one: True 断言单行，False 断言多行。
+    """
 
     connection: str
     sql: str
@@ -226,7 +315,12 @@ class DBAssertItem:
 
 @dataclass
 class FixtureAction:
-    """Fixture 中的单个动作"""
+    """Fixture 中的单个动作
+
+    Attributes:
+        action_type: 动作类型（api_call/db_execute/wait/shell）。
+        config: 动作配置参数。
+    """
 
     action_type: str  # api_call / db_execute / wait / shell
     config: dict[str, Any] = field(default_factory=dict)
@@ -237,7 +331,25 @@ class FixtureAction:
 
 @dataclass
 class TestCase:
-    """解析后的完整测试用例"""
+    """解析后的完整测试用例
+
+    Attributes:
+        name: 用例名称。
+        description: 用例描述。
+        tags: 标签列表（如 smoke, regression, P0）。
+        priority: 优先级（P0/P1/P2/P3）。
+        skip: 是否跳过。
+        skip_if: 条件跳过表达式。
+        variables: 用例级变量。
+        request: HTTP 请求配置（与 ws_config 二选一）。
+        ws_config: WebSocket 配置（与 request 二选一）。
+        assertions: 断言项列表。
+        extracts: 变量提取项列表。
+        db_asserts: 数据库断言项列表。
+        setup: 前置操作列表。
+        teardown: 后置操作列表。
+        timeout: 用例超时秒数（为 None 时使用全局默认）。
+    """
 
     name: str
     description: str = ""
@@ -263,7 +375,20 @@ class TestCase:
 
 @dataclass
 class TestSuite:
-    """测试套件"""
+    """测试套件
+
+    Attributes:
+        name: 套件名称。
+        description: 套件描述。
+        base_url: 套件级基础 URL（覆盖全局默认）。
+        tags: 套件标签。
+        priority: 默认优先级（用例可单独覆盖）。
+        variables: 套件级变量（用例可继承和覆盖）。
+        setup: 套件级前置操作。
+        teardown: 套件级后置操作。
+        cases: 包含的测试用例列表。
+        data_driven: 数据驱动参数列表，每个元素为一组变量覆盖。
+    """
 
     name: str
     description: str = ""
@@ -282,7 +407,17 @@ class TestSuite:
 
 @dataclass
 class EnvConfig:
-    """环境配置"""
+    """环境配置
+
+    Attributes:
+        name: 环境名称（dev/staging/production）。
+        base_url: 被测服务的 HTTP 基础 URL。
+        ws_url: WebSocket 服务 URL。
+        variables: 环境级变量（全局可用）。
+        http: HTTP 客户端配置（timeout/verify_ssl 等）。
+        db: 数据库连接配置（数据源名称→连接参数）。
+        ws: WebSocket 配置。
+    """
 
     name: str
     base_url: str = ""
@@ -295,7 +430,22 @@ class EnvConfig:
 
 @dataclass
 class ProjectConfig:
-    """项目全局配置"""
+    """项目全局配置
+
+    Attributes:
+        project_name: 项目名称。
+        version: 版本号。
+        http: HTTP 客户端全局默认配置。
+        logging: 日志配置（level/format/console/file）。
+        report: 报告配置（adapter 类型等）。
+        assertion: 断言引擎配置。
+        execution: 执行配置（并发度等）。
+        db: 数据库连接配置。
+        fixtures: Fixture 全局配置。
+        persistence: 持久化开关与配置。
+        settings: 通用设置（merge_strategy/hot_reload 等）。
+        case_timeout: 全局用例超时秒数。
+    """
 
     project_name: str = "API Test Suite"
     version: str = "1.0.0"
@@ -316,7 +466,20 @@ class ProjectConfig:
 
 @dataclass
 class CaseResult:
-    """单个用例执行结果"""
+    """单个用例执行结果
+
+    Attributes:
+        case_name: 用例名称。
+        passed: 是否通过。
+        status: 执行状态（PASS/FAIL/SKIP/TIMEOUT/ERROR）。
+        assertion_report: 断言报告（如有）。
+        error: 失败时的错误信息。
+        request: 请求快照。
+        response: 响应快照。
+        url: 实际请求 URL。
+        elapsed_ms: 执行耗时（毫秒）。
+        extracted_vars: 提取的变量字典。
+    """
 
     case_name: str
     passed: bool
@@ -332,7 +495,14 @@ class CaseResult:
 
 @dataclass
 class SuiteResult:
-    """套件执行结果"""
+    """套件执行结果
+
+    Attributes:
+        suite_name: 套件名称。
+        case_results: 套件内所有用例的执行结果。
+        setup_error: 套件级 setup 失败信息。
+        teardown_error: 套件级 teardown 失败信息。
+    """
 
     suite_name: str
     case_results: list[CaseResult] = field(default_factory=list)

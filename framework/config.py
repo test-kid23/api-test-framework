@@ -276,9 +276,8 @@ class ConfigLoader:
         if not path.exists():
             logger.debug(f"配置文件不存在，跳过: {path}")
             return {}
-        with open(path, encoding="utf-8") as f:
-            data = yaml.safe_load(f)
-            return data if isinstance(data, dict) else {}
+        data = yaml.safe_load(path.read_text(encoding="utf-8"))
+        return data if isinstance(data, dict) else {}
 
     def _build_project_config(self, raw: dict[str, Any]) -> ProjectConfig:
         """构建 ProjectConfig"""

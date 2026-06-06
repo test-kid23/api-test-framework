@@ -317,7 +317,7 @@ async def get_db_session() -> AsyncGenerator[AsyncSession, None]:
     async with _session_factory() as session:
         try:
             yield session
-        except Exception:
+        except Exception:  # 必须捕获任意异常以执行回滚（FastAPI 依赖安全模式）
             await session.rollback()
             raise
         finally:
@@ -425,7 +425,7 @@ def invalidate_runner_cache(env_name: str | None = None) -> None:
             runner = _runner_cache.pop(env_name)
             try:
                 runner._http_client.close()
-            except Exception:
+            except OSError:
                 pass
             try:
                 # AsyncHttpClient 的关闭需要在事件循环中执行，

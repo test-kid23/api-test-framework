@@ -8,9 +8,7 @@
 
 from __future__ import annotations
 
-import json
 import uuid
-from dataclasses import asdict
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Generator
@@ -29,6 +27,7 @@ from framework.persistence.bridge import run_async
 from framework.persistence.database import create_async_engine
 from framework.persistence.models.base import Base
 from framework.persistence.models.execution import ExecutionModel, ExecutionResultModel
+from framework.persistence.repositories.execution_repo import ExecutionResultRepository
 from framework.report import AllureReportAdapter, create_report_adapter
 from framework.report.base import ReportAdapter
 from framework.runner import TestRunner
@@ -251,7 +250,7 @@ def pytest_runtest_makereport(item: Any, call: Any) -> Any:
 
 
 def _save_case_result(item: Any, case_result: Any) -> None:
-    """将单个 CaseResult 写入 execution_results 表。"""
+    """将单个 CaseResult 通过 ExecutionResultRepository 写入 execution_results 表。"""
     global _saved_results
 
     persistence = getattr(item.config, "_persistence_state", None)
@@ -260,32 +259,25 @@ def _save_case_result(item: Any, case_result: Any) -> None:
 
     engine = persistence["engine"]
     execution_id = persistence["execution_id"]
-
     suite_name = getattr(item, "_yaml_suite_name", "unknown")
     case_name = getattr(case_result, "case_name", item.name)
 
-    def _serialize(obj: Any) -> str | None:
-        if obj is None:
-            return None
-        try:
-            return json.dumps(asdict(obj), ensure_ascii=False, default=str)
-        except (TypeError, ValueError):
-            return None
-
     async def _save() -> None:
+        from sqlalchemy.ext.asyncio import async_sessionmaker
+
         factory = async_sessionmaker(engine, expire_on_commit=False)
         async with factory() as session:
-            record = ExecutionResultModel(
+            repo = ExecutionResultRepository(session)
+            await repo.save_result(
                 execution_id=execution_id,
-                case_name=f"{suite_name}::{case_name}",
-                passed=case_result.passed,
-                status=case_result.status.value,
-                error=case_result.error,
-                request=_serialize(getattr(case_result, "request", None)),
-                response=_serialize(getattr(case_result, "response", None)),
-                elapsed_ms=case_result.elapsed_ms,
+                case_result=case_result,
+                case_id=None,
             )
-            session.add(record)
+            # 更新 case_name 为完整的 suite::case 格式
+            saved = await repo.list_by_execution(execution_id)
+            for record in saved:
+                if record.case_name == case_result.case_name:
+                    record.case_name = f"{suite_name}::{case_name}"
             await session.commit()
 
     try:

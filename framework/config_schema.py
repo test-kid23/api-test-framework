@@ -10,7 +10,7 @@
 
 from __future__ import annotations
 
-from typing import Literal, Optional
+from typing import Literal
 
 from pydantic import AnyHttpUrl, BaseModel, ConfigDict, Field
 
@@ -37,7 +37,7 @@ class HttpConfig(BaseModel):
     timeout: int = Field(default=30, ge=1, le=300, description="请求超时时间（秒），范围 1~300")
     verify_ssl: bool = Field(default=False, description="是否验证 SSL 证书")
     max_retries: int = Field(default=0, ge=0, le=10, description="最大重试次数，范围 0~10")
-    base_url: Optional[AnyHttpUrl] = Field(default=None, description="基础 URL，可选")
+    base_url: AnyHttpUrl | None = Field(default=None, description="基础 URL，可选")
 
 
 class LoggingConfig(BaseModel):

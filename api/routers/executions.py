@@ -20,6 +20,7 @@ import uuid
 from datetime import datetime, timezone
 from typing import Any
 
+import yaml
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -285,7 +286,7 @@ async def _execute_cases_in_background(
             # 解析 YAML
             try:
                 test_case = parse_yaml_case(yaml_content)
-            except Exception as e:
+            except yaml.YAMLError as e:
                 await result_repo.save_result(
                     execution_id=exec_uuid,
                     case_result=_make_error_case_result(case_name, f"YAML 解析失败: {e}"),

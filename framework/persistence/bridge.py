@@ -39,7 +39,7 @@ def run_async(coro: Coroutine[Any, Any, T]) -> T:
     def _runner() -> None:
         try:
             result["value"] = asyncio.run(coro)
-        except Exception as exc:
+        except Exception as exc:  # 必须捕获任意异常以跨线程传递
             result["error"] = exc
 
     t = threading.Thread(target=_runner, daemon=True)
