@@ -23,6 +23,8 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write   # gh-pages 部署需要写权限
     strategy:
       fail-fast: false
       matrix:
@@ -60,6 +62,8 @@ jobs:
                  --ignore=tests/framework/test_sync.py \
                  --ignore=tests/framework/test_ws_async_executor.py \
                  --alluredir=reports/allure-results \
+                 --no-persist \
+                 --tb=short \
                  -v
 
       - name: Run integration tests
@@ -72,6 +76,8 @@ jobs:
                  -m "${{ github.event.inputs.tags || 'smoke' }}" \
                  -n auto \
                  --alluredir=reports/allure-results \
+                 --no-persist \
+                 --tb=short \
                  -v
         continue-on-error: true
 
