@@ -4,16 +4,20 @@
 """
 
 from framework.persistence.models.base import Base
+from framework.persistence.models.environment import EnvironmentModel
 from framework.persistence.models.execution import ExecutionModel, ExecutionResultModel
 from framework.persistence.models.report import ReportModel
+from framework.persistence.models.schedule import ScheduleModel
 from framework.persistence.models.test_case import TestCaseModel
 from framework.persistence.models.test_suite import TestSuiteModel
 
 __all__ = [
     "Base",
-    "TestCaseModel",
-    "TestSuiteModel",
+    "EnvironmentModel",
     "ExecutionModel",
     "ExecutionResultModel",
     "ReportModel",
+    "ScheduleModel",
+    "TestCaseModel",
+    "TestSuiteModel",
 ]

@@ -361,26 +361,171 @@ _runner_cache_lock = threading.Lock()
 _log = Logger.get("api.dependencies")
 
 
-def create_runner(env_name: str = "dev") -> TestRunner:
+def _run_async_query(coro: Any) -> Any:
+    """在线程安全的前提下执行异步协程。
+
+    自动检测当前是否在事件循环内，是则通过新线程执行，
+    否则直接用 asyncio.run()。
+
+    Args:
+        coro: 待执行的协程对象。
+
+    Returns:
+        协程的返回值。
+    """
+    try:
+        asyncio.get_running_loop()
+        import concurrent.futures
+
+        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
+            fut = pool.submit(asyncio.run, coro)
+            return fut.result(timeout=10)
+    except RuntimeError:
+        return asyncio.run(coro)
+
+
+async def _resolve_env_model(
+    repo: Any,
+    env_id: str | None,
+    env_name: str | None,
+) -> Any:
+    """按 ID 或名称解析环境 ORM 模型。
+
+    Args:
+        repo: EnvironmentRepository 实例。
+        env_id: 环境 ID 字符串。
+        env_name: 环境名称。
+
+    Returns:
+        EnvironmentModel 或 None。
+    """
+    import uuid as _uuid
+
+    if env_id:
+        try:
+            uid = _uuid.UUID(env_id)
+            return await repo.get(uid)
+        except ValueError:
+            _log.warning("env_db_invalid_id", env_id=env_id)
+            return None
+    if env_name:
+        return await repo.find_by_name(env_name)
+    return None
+
+
+def _try_load_env_from_db(
+    env_id: str | None = None,
+    env_name: str | None = None,
+) -> EnvConfig | None:
+    """从数据库加载环境配置，转换为 EnvConfig。
+
+    优先按 env_id 精确查询，其次按 env_name 查询。
+    线程安全，可在同步/异步任意上下文中调用。
+
+    Args:
+        env_id: 环境 UUID 字符串（可选，优先级高于 env_name）。
+        env_name: 环境名称（可选）。
+
+    Returns:
+        EnvConfig 或 None（DB 未命中/连接失败时返回 None）。
+    """
+    async def _query() -> EnvConfig | None:
+        session = create_independent_session()
+        try:
+            from framework.persistence.repositories.environment_repo import (
+                EnvironmentRepository,
+            )
+
+            repo = EnvironmentRepository(session)
+            model = await _resolve_env_model(repo, env_id, env_name)
+            if model is None:
+                return None
+
+            _log.debug(
+                "env_db_lookup",
+                env_name=model.name,
+                has_base_url=bool(model.base_url),
+                var_count=len(model.variables) if model.variables else 0,
+            )
+            return EnvConfig(
+                name=model.name,
+                base_url=model.base_url or "",
+                ws_url=model.ws_url or "",
+                variables=model.variables or {},
+                http=model.http_config or {},
+            )
+        except Exception as exc:
+            _log.warning(
+                "env_db_query_failed",
+                error=str(exc),
+                env_id=env_id,
+                env_name=env_name,
+            )
+            return None
+        finally:
+            await session.close()
+
+    return _run_async_query(_query())
+
+
+def create_runner(
+    env_name: str = "dev",
+    environment_id: str | None = None,
+) -> TestRunner:
     """创建 TestRunner 实例（含 AsyncHttpClient 支持）
+
+    环境加载优先级（DB 优先、文件兜底）：
+    1. 若传入 environment_id → 从 DB 查询环境 → 构建 EnvConfig
+    2. 若传入 env_name → 先按名称查 DB → 命中则用 DB 数据，未命中回退 YAML
+    3. 若都未传 → ConfigLoader 使用默认环境（YAML）
 
     通过缓存复用 runner 实例（按环境隔离），避免每次执行都重新创建连接池。
 
     Args:
-        env_name: 环境名称（dev/staging/production）
+        env_name: 环境名称（dev/staging/production 等），DB 命中时可作为回退名称。
+        environment_id: 数据库中的环境 UUID，优先使用。
 
     Returns:
-        已配置的 TestRunner 实例，同时包含同步 HttpClient 和异步 AsyncHttpClient
+        已配置的 TestRunner 实例。
     """
     global _runner_cache
 
-    with _runner_cache_lock:
-        if env_name in _runner_cache:
-            return _runner_cache[env_name]
+    # 缓存 key 优先用传入的环境 ID/名称
+    cache_key = environment_id or env_name
 
-        # 加载配置
-        loader = ConfigLoader()
-        project_config, env_config = loader.load(env_name)
+    with _runner_cache_lock:
+        if cache_key in _runner_cache:
+            _log.debug("runner_cache_hit", cache_key=cache_key)
+            return _runner_cache[cache_key]
+
+        # ── DB 环境加载（优先） ──
+        env_config: EnvConfig | None = None
+        if environment_id or env_name:
+            env_config = _try_load_env_from_db(
+                env_id=environment_id,
+                env_name=env_name if not environment_id else None,
+            )
+            if env_config:
+                _log.info(
+                    "env_loaded_from_db",
+                    env_name=env_config.name,
+                    cache_key=cache_key,
+                )
+
+        # ── YAML 环境加载（兜底） ──
+        project_config: ProjectConfig
+        if env_config is None:
+            loader = ConfigLoader()
+            project_config, env_config = loader.load(env_name)
+            _log.info(
+                "env_loaded_from_yaml",
+                env_name=env_config.name,
+                cache_key=cache_key,
+            )
+        else:
+            # DB 命中后仍需从 YAML 加载 project_config（全局配置）
+            loader = ConfigLoader()
+            project_config, _ = loader.load(env_config.name or env_name)
 
         # 创建同步 HTTP 客户端
         http_client = HttpClient(
@@ -405,8 +550,13 @@ def create_runner(env_name: str = "dev") -> TestRunner:
             report_adapter=NoopReportAdapter(),
         )
 
-        _runner_cache[env_name] = runner
-        _log.info("runner_created", env=env_name)
+        _runner_cache[cache_key] = runner
+        _log.info(
+            "runner_created",
+            env=env_config.name,
+            cache_key=cache_key,
+            base_url=env_config.base_url,
+        )
         return runner
 
 

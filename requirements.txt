@@ -44,6 +44,8 @@ uvicorn[standard]==0.36.0
 # ── Distributed Execution ──
 celery[redis]==5.5.1
 redis==5.2.1
+# ── Scheduler ──
+apscheduler>=3.10.0
 # ── Security & Dev Tools (CI) ──
 safety==3.8.1
 bandit==1.9.4

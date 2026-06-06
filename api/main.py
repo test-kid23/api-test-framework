@@ -13,8 +13,10 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
-from api.routers import cases, executions, reports, suites
+from api.routers import cases, environments, executions, reports, schedules, suites
 from api.schemas.common import ErrorDetail, ErrorResponse
+from framework.scheduler import get_scheduler
+from framework.utils.logger import Logger
 
 # ==================== 应用描述 ====================
 
@@ -45,18 +47,79 @@ TAGS_METADATA = [
     {"name": "suites", "description": "测试套件管理"},
     {"name": "executions", "description": "执行触发与结果查询"},
     {"name": "reports", "description": "报告查询与分析"},
+    {"name": "schedules", "description": "定时调度管理"},
+    {"name": "environments", "description": "环境配置管理"},
 ]
 
 
 # ==================== 生命周期 ====================
 
+_log = Logger.get("api.main")
+
+
+def _to_sync_db_url(async_url: str) -> str:
+    """将异步数据库 URL 转换为同步 URL（供 APScheduler SQLAlchemyJobStore 使用）。
+
+    Args:
+        async_url: 异步驱动 URL，如 postgresql+asyncpg://... 或 sqlite+aiosqlite://...
+
+    Returns:
+        同步驱动 URL，如 postgresql://... 或 sqlite:///...
+    """
+    if "+aiosqlite" in async_url:
+        return async_url.replace("+aiosqlite", "")
+    if "+asyncpg" in async_url:
+        return async_url.replace("+asyncpg", "")
+    if "+aiomysql" in async_url:
+        return async_url.replace("+aiomysql", "+pymysql")
+    return async_url
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     """应用启动/关闭时的生命周期管理"""
-    # 启动时
+    import os
+
+    # ── 启动调度器 ──
+    try:
+        from api.dependencies import _init_db, _session_factory
+
+        # 确保数据库已初始化
+        _init_db()
+
+        # 获取数据库 URL
+        dsn_override = os.environ.get("AUTOTEST_DB_URL")
+        if dsn_override:
+            sync_url = _to_sync_db_url(dsn_override)
+        else:
+            from framework.config import ConfigLoader
+
+            loader = ConfigLoader()
+            project_config, _ = loader.load()
+            db_config = project_config.db
+            # 构建同步 URL
+            if hasattr(db_config, "dsn"):
+                sync_url = _to_sync_db_url(db_config.dsn)
+            else:
+                sync_url = "sqlite:///data/autotest.db"
+
+        scheduler = get_scheduler(_session_factory, sync_url)
+        await scheduler.start()
+        _log.info("scheduler_lifecycle_started")
+    except Exception as e:
+        _log.error("scheduler_lifecycle_start_failed", error=str(e))
+
     yield
-    # 关闭时
+
+    # ── 关闭调度器 ──
+    try:
+        from framework.scheduler import _scheduler
+
+        if _scheduler is not None:
+            await _scheduler.stop()
+            _log.info("scheduler_lifecycle_stopped")
+    except Exception as e:
+        _log.error("scheduler_lifecycle_stop_failed", error=str(e))
 
 
 # ==================== App 工厂 ====================
@@ -92,6 +155,8 @@ def create_app() -> FastAPI:
     app.include_router(suites.router)
     app.include_router(executions.router)
     app.include_router(reports.router)
+    app.include_router(schedules.router)
+    app.include_router(environments.router)
 
     # ── 根路径 ───────────────────────────────────────
 
