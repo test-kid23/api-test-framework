@@ -1,13 +1,11 @@
-[bandit]
-# 排除测试目录和文档目录
-exclude_dirs: tests,doc,.venv,build,dist
+---
+# 排除目录
+exclude_dirs: ["tests", "doc", ".venv", "build", "dist"]
 
-# 跳过的测试 ID（按需调整）
+# 跳过的测试 ID
 # B101: assert_used — 测试框架中 assert 是标准用法
 # B110: try_except_pass — 某些场景需要静默处理
-# B311: random — 测试数据生成可使用标准 random
-# B404: import_subprocess — 如未使用 subprocess 可移除本行
-skips: B101,B110
+skips: ["B101", "B110"]
 
 # 仅报告 medium 及以上严重度
 severity: medium

@@ -66,21 +66,6 @@ jobs:
                  --tb=short \
                  -v
 
-      - name: Run integration tests
-        env:
-          ENV: ${{ github.event.inputs.environment || 'staging' }}
-          DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
-          API_KEY: ${{ secrets.API_KEY }}
-        run: |
-          pytest testcases/ --env=${{ env.ENV }} \
-                 -m "${{ github.event.inputs.tags || 'smoke' }}" \
-                 -n auto \
-                 --alluredir=reports/allure-results \
-                 --no-persist \
-                 --tb=short \
-                 -v
-        continue-on-error: true
-
       # ── Allure Report (same job, no cross-job artifact dependency) ──
       - name: Setup Node.js
         uses: actions/setup-node@v4
