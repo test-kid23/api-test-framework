@@ -101,6 +101,17 @@ class DBConfig(BaseModel):
     dsn: str = Field(default="", description="数据源连接字符串")
 
 
+class PersistenceConfig(BaseModel):
+    """持久化配置
+
+    enabled: 是否启用持久化，关闭后测试执行不会写入数据库，适合本地调试。
+    """
+
+    model_config = ConfigDict(extra="ignore")
+
+    enabled: bool = Field(default=True, description="是否启用测试结果自动持久化到数据库")
+
+
 # ═══════════════════════════════════════════════════════════════
 # 顶层配置模型
 # ═══════════════════════════════════════════════════════════════
@@ -120,6 +131,7 @@ class AutotestConfig(BaseModel):
     logging: LoggingConfig = Field(default_factory=LoggingConfig, description="日志配置")
     report: ReportConfig = Field(default_factory=ReportConfig, description="报告配置")
     execution: ExecutionConfig = Field(default_factory=ExecutionConfig, description="执行配置")
+    persistence: PersistenceConfig = Field(default_factory=PersistenceConfig, description="持久化配置")
     db: DBConfig = Field(default_factory=DBConfig, description="数据库配置")
     case_timeout: int = Field(
         default=300,

@@ -439,6 +439,9 @@ pytest testcases/ --tags=auth,login -v
 
 # 同时指定环境和标签
 pytest testcases/ --env=staging --tags=P0 -v
+
+# 跳过持久化（不写数据库）
+pytest testcases/ --no-persist -v
 ```
 
 ### 并行执行
@@ -1417,6 +1420,7 @@ docker compose -f docker-compose.test.yml up
 | `make clean` | 清理报告和日志 |
 | `pytest --env=staging` | 指定环境运行 |
 | `pytest --tags=smoke,P0` | 指定标签过滤 |
+| `pytest --no-persist` | 跳过持久化，不写入数据库 |
 | `pytest -n 4` | 4 进程并行 |
 | `pytest --reruns 2` | 失败重试 2 次 |
 | `pytest --collect-only` | 仅收集用例 |

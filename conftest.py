@@ -1,11 +1,23 @@
-"""pytest conftest — 收集逻辑已下沉至 framework.collector，fixture 走原生路径"""
+"""pytest conftest — 收集逻辑已下沉至 framework.collector，fixture 走原生路径
+
+持久化报告：
+- _persistence  fixture（session scope）：创建 SQLAlchemy AsyncEngine + 执行记录。
+- pytest_runtest_makereport 钩子：每个用例结束后将 CaseResult 写入 execution_results 表。
+- pytest_sessionfinish 钩子：全部用例结束后更新 execution 状态为 passed/failed。
+"""
 
 from __future__ import annotations
 
+import json
+import uuid
+from dataclasses import asdict
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Generator
 
 import pytest
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from framework.client import HttpClient
 from framework.collector import YamlCollector
@@ -13,6 +25,10 @@ from framework.config import ConfigLoader
 from framework.context import TestContext
 from framework.db import DBConnectionManager
 from framework.models import EnvConfig, ProjectConfig
+from framework.persistence.bridge import run_async
+from framework.persistence.database import create_async_engine
+from framework.persistence.models.base import Base
+from framework.persistence.models.execution import ExecutionModel, ExecutionResultModel
 from framework.report import AllureReportAdapter, create_report_adapter
 from framework.report.base import ReportAdapter
 from framework.runner import TestRunner
@@ -22,6 +38,7 @@ from framework.utils.logger import Logger
 def pytest_addoption(parser: pytest.Parser) -> None:
     parser.addoption("--env", default="dev", help="测试环境: dev/staging/production")
     parser.addoption("--tags", default="", help="标签过滤: smoke,regression,P0")
+    parser.addoption("--no-persist", action="store_true", default=False, help="禁用本次测试结果持久化到数据库")
 
 
 # ── Session Fixtures ──────────────────────────────────────────────
@@ -97,11 +114,122 @@ def runner(
     )
 
 
-# ── YAML 收集 + 报告 ──────────────────────────────────────────────
+# ── 数据库持久化 ──────────────────────────────────────────────────
+
+
+_saved_results: int = 0  # 计数器：已持久化的用例数
+
+
+@pytest.fixture(scope="session")
+def _persistence(request: pytest.FixtureRequest) -> Generator[dict[str, Any], None, None]:
+    """Session 级持久化基础设施：引擎 + 执行记录。
+
+    自动建表 → 创建 execution 记录 → 测试执行 → 更新 execution 状态。
+    """
+    global _saved_results
+    _saved_results = 0
+
+    env_name = request.config.getoption("--env", "local")
+    loader = ConfigLoader()
+    config, _ = loader.load(env_name)
+
+    # --no-persist 命令行开关：优先级最高，传参时跳过所有持久化
+    if request.config.getoption("--no-persist", default=False):
+        yield {}
+        return
+
+    # 持久化开关：关闭时跳过所有数据库操作
+    if not config.persistence.enabled:
+        yield {}
+        return
+
+    engine = create_async_engine(config.db, echo=False)
+
+    # 建表（幂等）
+    async def _create_tables() -> None:
+        async with engine.begin() as conn:
+            await conn.run_sync(Base.metadata.create_all)
+
+    run_async(_create_tables())
+
+    # 创建执行记录
+    execution_id = uuid.uuid4()
+
+    async def _start_execution() -> None:
+        factory = async_sessionmaker(engine, expire_on_commit=False)
+        async with factory() as session:
+            record = ExecutionModel(
+                id=execution_id,
+                status="running",
+                trigger="manual",
+                env=env_name,
+                started_at=datetime.now(timezone.utc),
+            )
+            session.add(record)
+            await session.commit()
+
+    run_async(_start_execution())
+
+    state: dict[str, Any] = {"engine": engine, "execution_id": execution_id}
+    request.config._persistence_state = state  # type: ignore[attr-defined]
+
+    yield state
+
+    # ── session 结束：更新执行记录最终状态 ──
+    async def _finish_execution() -> None:
+        factory = async_sessionmaker(engine, expire_on_commit=False)
+        async with factory() as session:
+            result = await session.execute(
+                select(ExecutionModel).where(ExecutionModel.id == execution_id)
+            )
+            exec_record = result.scalar_one_or_none()
+            if exec_record is None:
+                return
+            exec_record.finished_at = datetime.now(timezone.utc)
+            # 根据持久化结果数推断状态
+            if _saved_results == 0:
+                exec_record.status = "error"
+            else:
+                # 用 passed 计数判断
+                count_result = await session.execute(
+                    select(ExecutionResultModel).where(
+                        ExecutionResultModel.execution_id == execution_id,
+                        ExecutionResultModel.passed == True,  # noqa: E712
+                    )
+                )
+                passed_count = len(count_result.scalars().all())
+                exec_record.status = "failed" if passed_count < _saved_results else "passed"
+            await session.commit()
+
+    run_async(_finish_execution())
+
+    async def _dispose() -> None:
+        await engine.dispose()
+
+    run_async(_dispose())
+
+
+@pytest.hookimpl(trylast=True)
+def pytest_sessionfinish(session: pytest.Session) -> None:
+    """Session 结束时确保 _persistence fixture 已触发清理。
+
+    如果 _persistence fixture 未被任何用例引用（例如只运行了空标记），
+    此 hook 作为兜底什么都不做（fixture 的 yield 清理已处理）。
+    """
+    pass  # 实际清理在 _persistence fixture 的 yield 之后执行
+
+
+# ── YAML 收集 + 报告 + 持久化 ──────────────────────────────────────
 
 
 def pytest_collect_file(parent: Any, file_path: Path) -> Any:
     return YamlCollector.collect_file(parent, file_path)
+
+
+@pytest.fixture(scope="session", autouse=True)
+def _auto_persistence(_persistence: dict[str, Any]) -> dict[str, Any]:
+    """自动注入持久化基础设施，确保所有 session 都会创建 engine + execution。"""
+    return _persistence
 
 
 @pytest.hookimpl(tryfirst=True, hookwrapper=True)
@@ -117,3 +245,55 @@ def pytest_runtest_makereport(item: Any, call: Any) -> Any:
             adapter.attach_response(case_result.response)
         if case_result.assertion_report:
             adapter.attach_assertions(case_result.assertion_report)
+
+        # ── 持久化到数据库 ──
+        _save_case_result(item, case_result)
+
+
+def _save_case_result(item: Any, case_result: Any) -> None:
+    """将单个 CaseResult 写入 execution_results 表。"""
+    global _saved_results
+
+    persistence = getattr(item.config, "_persistence_state", None)
+    if persistence is None:
+        return
+
+    engine = persistence["engine"]
+    execution_id = persistence["execution_id"]
+
+    suite_name = getattr(item, "_yaml_suite_name", "unknown")
+    case_name = getattr(case_result, "case_name", item.name)
+
+    def _serialize(obj: Any) -> str | None:
+        if obj is None:
+            return None
+        try:
+            return json.dumps(asdict(obj), ensure_ascii=False, default=str)
+        except (TypeError, ValueError):
+            return None
+
+    async def _save() -> None:
+        factory = async_sessionmaker(engine, expire_on_commit=False)
+        async with factory() as session:
+            record = ExecutionResultModel(
+                execution_id=execution_id,
+                case_name=f"{suite_name}::{case_name}",
+                passed=case_result.passed,
+                status=case_result.status.value,
+                error=case_result.error,
+                request=_serialize(getattr(case_result, "request", None)),
+                response=_serialize(getattr(case_result, "response", None)),
+                elapsed_ms=case_result.elapsed_ms,
+            )
+            session.add(record)
+            await session.commit()
+
+    try:
+        run_async(_save())
+        _saved_results += 1
+    except Exception:
+        Logger.get("conftest").warning(
+            "persist_case_result_failed",
+            case_name=f"{suite_name}::{case_name}",
+            exc_info=True,
+        )

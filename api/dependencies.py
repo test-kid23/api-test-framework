@@ -2,18 +2,25 @@
 
 当前 Phase 2 第一阶段使用内存存储（InMemoryStore）。
 Phase 2 T2-2 完成后将替换为 SQLAlchemy AsyncSession。
+
+报告模块（T2-4）已接入真实数据库，通过 get_db_session() 注入 AsyncSession。
 """
 
 from __future__ import annotations
 
+import os
 import threading
+from collections.abc import AsyncGenerator
 from copy import deepcopy
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
 from pydantic import ValidationError
+from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 
 from api.schemas.case import CaseResponse
+from framework.config import ConfigLoader
+from framework.persistence.database import create_async_engine, create_async_session_factory
 
 
 # ==================== 内存数据存储 ====================
@@ -234,3 +241,56 @@ def reset_store() -> None:
     global _store
     with _store_lock:
         _store = InMemoryStore()
+
+
+# ==================== 数据库会话（报告模块） ====================
+
+_engine: AsyncEngine | None = None
+_session_factory: async_sessionmaker[AsyncSession] | None = None
+_db_lock = threading.Lock()
+
+
+def _init_db() -> None:
+    """懒初始化数据库引擎与会话工厂。
+
+    从配置文件和 AUTOTEST_DB_URL 环境变量读取数据库连接。
+    线程安全的单次初始化。
+    """
+    global _engine, _session_factory
+
+    dsn_override = os.environ.get("AUTOTEST_DB_URL")
+    if dsn_override:
+        # 使用环境变量覆盖的 DSN
+        engine = create_async_engine(
+            {"dsn": dsn_override, "driver": "auto"},
+            echo=False,
+        )
+    else:
+        loader = ConfigLoader()
+        project_config, _ = loader.load()
+        engine = create_async_engine(project_config.db, echo=False)
+
+    _engine = engine
+    _session_factory = create_async_session_factory(engine)
+
+
+async def get_db_session() -> AsyncGenerator[AsyncSession, None]:
+    """FastAPI 依赖：为每个请求提供异步数据库会话。
+
+    会话在请求结束时自动关闭，异常时自动回滚。
+    """
+    global _session_factory
+    if _session_factory is None:
+        with _db_lock:
+            if _session_factory is None:
+                _init_db()
+
+    assert _session_factory is not None
+    async with _session_factory() as session:
+        try:
+            yield session
+        except Exception:
+            await session.rollback()
+            raise
+        finally:
+            await session.close()

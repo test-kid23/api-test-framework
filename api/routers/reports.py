@@ -6,18 +6,20 @@
 - GET /api/v1/reports/trends       趋势数据
 - GET /api/v1/reports/top-failures Top N 失败用例
 
-当前 Phase 2 T2-1 阶段为占位实现。
-完整的趋势分析、聚合统计将在 T2-4 完成后接入。
+报告列表仍使用 InMemoryStore（与执行记录联动），
+趋势和 Top N 失败已接入真实数据库 ReportService。
 """
 
 from __future__ import annotations
 
+import uuid
 from datetime import datetime, timezone
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
+from sqlalchemy.ext.asyncio import AsyncSession
 
-from api.dependencies import InMemoryStore, get_store
+from api.dependencies import InMemoryStore, get_db_session, get_store
 from api.schemas.common import (
     PaginatedResponse,
     PaginationMeta,
@@ -25,10 +27,12 @@ from api.schemas.common import (
 )
 from api.schemas.report import (
     ReportListItem,
+    TopFailure,
     TopFailuresResponse,
     TrendItem,
     TrendResponse,
 )
+from framework.persistence.services.report_service import ReportService
 
 router = APIRouter(prefix="/api/v1/reports", tags=["reports"])
 
@@ -83,12 +87,42 @@ async def list_reports(
 )
 async def get_trends(
     days: int = Query(default=7, ge=1, le=90, description="统计天数"),
+    suite_id: Optional[str] = Query(
+        default=None,
+        description="按套件 ID 过滤（UUID 格式）",
+    ),
+    session: AsyncSession = Depends(get_db_session),
 ):
-    """查询测试通过率趋势数据。
+    """查询指定时间范围内每日的通过率与平均响应时间趋势。
 
-    当前为占位实现，返回空趋势。T2-4 完成后接入真实数据。
+    返回每天的总用例数、通过数、失败数、通过率、平均耗时。
+    支持按 suite_id 过滤，仅统计该套件下的执行结果。
     """
-    return SuccessResponse(data=TrendResponse(days=days, items=[]))
+    suite_uuid: uuid.UUID | None = None
+    if suite_id:
+        try:
+            suite_uuid = uuid.UUID(suite_id)
+        except ValueError:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"suite_id 格式无效: {suite_id}",
+            )
+
+    service = ReportService(session)
+    rows = await service.get_pass_rate_trend(days=days, suite_id=suite_uuid)
+
+    items = [
+        TrendItem(
+            date=r["date"],
+            total=r["total"],
+            passed=r["passed"],
+            failed=r["failed"],
+            pass_rate=r["pass_rate"],
+            avg_elapsed_ms=r["avg_elapsed_ms"],
+        )
+        for r in rows
+    ]
+    return SuccessResponse(data=TrendResponse(days=days, items=items))
 
 
 # ── GET /reports/top-failures ─────────────────────────────
@@ -101,9 +135,38 @@ async def get_trends(
 )
 async def get_top_failures(
     limit: int = Query(default=10, ge=1, le=50, description="返回数量"),
+    suite_id: Optional[str] = Query(
+        default=None,
+        description="按套件 ID 过滤（UUID 格式）",
+    ),
+    session: AsyncSession = Depends(get_db_session),
 ):
-    """查询失败次数最多的用例排行。
+    """查询失败次数最多的 Top N 用例。
 
-    当前为占位实现，返回空列表。T2-4 完成后接入真实数据。
+    按失败次数降序排列，包含最近失败时间和错误信息。
+    支持按 suite_id 过滤。
     """
-    return SuccessResponse(data=TopFailuresResponse(items=[]))
+    suite_uuid: uuid.UUID | None = None
+    if suite_id:
+        try:
+            suite_uuid = uuid.UUID(suite_id)
+        except ValueError:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"suite_id 格式无效: {suite_id}",
+            )
+
+    service = ReportService(session)
+    rows = await service.get_top_failures(limit=limit, suite_id=suite_uuid)
+
+    items = [
+        TopFailure(
+            case_id=r["case_id"],
+            case_name=r["case_name"],
+            fail_count=r["fail_count"],
+            last_failed_at=r["last_failed_at"],
+            last_error=r["last_error"],
+        )
+        for r in rows
+    ]
+    return SuccessResponse(data=TopFailuresResponse(items=items))
