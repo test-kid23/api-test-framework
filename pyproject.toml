@@ -65,6 +65,10 @@ dev = [
     "watchdog>=4.0.0",
     "pip-tools>=7.4.0",
 ]
+distributed = [
+    "celery[redis]>=5.4.0",
+    "redis>=5.2.0",
+]
 all = [
     "SQLAlchemy>=2.0.25",
     "aiosqlite>=0.20.0",
@@ -81,6 +85,8 @@ all = [
     "bandit>=1.7.0",
     "watchdog>=4.0.0",
     "pip-tools>=7.4.0",
+    "celery[redis]>=5.4.0",
+    "redis>=5.2.0",
 ]
 
 [project.scripts]

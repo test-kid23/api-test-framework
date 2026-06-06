@@ -1,0 +1,35 @@
+# ═══════════════════════════════════════════════════════════
+# AutoTest Framework · API + Worker 镜像
+#
+# 相比根目录 Dockerfile（pytest runner），此镜像额外包含:
+# - FastAPI 服务运行时
+# - Celery + Redis 分布式执行依赖
+# ═══════════════════════════════════════════════════════════
+
+FROM python:3.12-slim
+
+WORKDIR /app
+
+# ── 系统依赖层 ──
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    default-libmysqlclient-dev \
+    gcc \
+    && rm -rf /var/lib/apt/lists/*
+
+# ── Python 依赖层 ──
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+# ── 项目源码层 ──
+COPY . .
+
+# ── 可编辑安装 ──
+RUN pip install --no-cache-dir -e ".[all,distributed]"
+
+# ── 运行时目录 ──
+RUN mkdir -p reports/allure-results reports/coverage logs
+
+EXPOSE 8000
+
+# 默认启动 FastAPI（docker-compose 可覆盖为 celery worker）
+CMD ["uvicorn", "api.main:app", "--host", "0.0.0.0", "--port", "8000"]

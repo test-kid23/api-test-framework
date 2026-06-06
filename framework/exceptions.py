@@ -327,3 +327,64 @@ class PluginLoadError(PluginError):
         )
         self.plugin_name = plugin_name
         self.detail = detail
+
+
+# ==================== 分布式执行异常 ====================
+
+
+class DistributedExecutionError(AutoTestException):
+    """分布式执行异常基类"""
+
+    pass
+
+
+class WorkerUnavailableError(DistributedExecutionError):
+    """Worker 不可用 / 无法连接到消息队列
+
+    Attributes:
+        broker_url: Broker 连接地址。
+    """
+
+    def __init__(self, broker_url: str, detail: str = "", *, trace_id: str = "") -> None:
+        super().__init__(
+            f"无法连接到消息队列 [{broker_url}]" + (f": {detail}" if detail else ""),
+            trace_id=trace_id,
+        )
+        self.broker_url = broker_url
+        self.detail = detail
+
+
+class TaskQueueFullError(DistributedExecutionError):
+    """任务队列已满
+
+    Attributes:
+        queue_name: 队列名称。
+        max_size: 队列最大容量。
+    """
+
+    def __init__(
+        self, queue_name: str = "celery", max_size: int = 0, *, trace_id: str = ""
+    ) -> None:
+        msg = f"任务队列已满 [{queue_name}]"
+        if max_size > 0:
+            msg += f" (容量: {max_size})"
+        super().__init__(msg, trace_id=trace_id)
+        self.queue_name = queue_name
+        self.max_size = max_size
+
+
+class TaskResultTimeoutError(DistributedExecutionError):
+    """等待任务结果超时
+
+    Attributes:
+        task_id: Celery 任务 ID。
+        timeout_seconds: 等待超时秒数。
+    """
+
+    def __init__(self, task_id: str, timeout_seconds: int, *, trace_id: str = "") -> None:
+        super().__init__(
+            f"等待任务结果超时 [{task_id}]: 超过 {timeout_seconds}s",
+            trace_id=trace_id,
+        )
+        self.task_id = task_id
+        self.timeout_seconds = timeout_seconds

@@ -76,6 +76,10 @@ class ExecutionResponse(TimestampMixin):
         description="触发方式",
     )
     env: str = Field(default="dev", description="目标环境")
+    mode: str = Field(default="local", description="执行模式: local / distributed")
+    celery_task_id: Optional[str] = Field(
+        default=None, description="Celery 任务 ID（分布式模式专用）"
+    )
     case_ids: list[str] = Field(default_factory=list, description="包含的用例 ID 列表")
     suite_id: Optional[str] = Field(default=None, description="关联套件 ID")
     results: list[ExecutionCaseResult] = Field(

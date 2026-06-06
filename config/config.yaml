@@ -93,6 +93,13 @@ execution:
   workers: 4
   rerun_failed: 0
   rerun_delay: 1
+  celery:
+    broker_url: redis://localhost:6379/0
+    result_backend: redis://localhost:6379/0
+    task_serializer: json
+    result_serializer: json
+    task_track_started: true
+    worker_concurrency: 4
 
 # ----------------------------------------------------------
 # 用例超时控制（全局默认，单用例可通过 TestCase.timeout 覆盖）

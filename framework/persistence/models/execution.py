@@ -74,6 +74,12 @@ class ExecutionModel(Base):
         nullable=True,
         comment="完成时间",
     )
+    celery_task_id: Mapped[str | None] = mapped_column(
+        String(255),
+        nullable=True,
+        index=True,
+        comment="Celery 任务 ID（分布式模式专用）",
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         server_default=func.now(),

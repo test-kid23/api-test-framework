@@ -1,0 +1,99 @@
+version: "3.8"
+
+# ═══════════════════════════════════════════════════════════
+# AutoTest Framework · 分布式执行栈
+#
+# 服务:
+#   redis    — Celery broker + result backend
+#   api      — FastAPI REST 服务（执行触发 + 结果查询）
+#   worker   — Celery Worker（消费执行任务）
+#
+# 使用:
+#   本地模式:    docker-compose up api
+#   分布式模式:  docker-compose up -d redis api worker
+#   多 Worker:   docker-compose up -d --scale worker=4
+# ═══════════════════════════════════════════════════════════
+
+services:
+  # ── Redis ──────────────────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    container_name: autotest-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    restart: unless-stopped
+
+  # ── FastAPI 服务 ───────────────────────────────────────
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile.api
+    container_name: autotest-api
+    ports:
+      - "8000:8000"
+    environment:
+      - ENV=${ENV:-dev}
+      - DB_PASSWORD=${DB_PASSWORD:-}
+      - API_KEY=${API_KEY:-}
+      - AUTOTEST_DB_URL=${AUTOTEST_DB_URL:-}
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/0
+    volumes:
+      - ./config:/app/config
+      - ./testcases:/app/testcases
+      - ./reports:/app/reports
+      - ./logs:/app/logs
+      - api_data:/app/data
+    depends_on:
+      redis:
+        condition: service_healthy
+    command: >
+      uvicorn api.main:app
+      --host 0.0.0.0
+      --port 8000
+      --reload
+      --log-level info
+    restart: unless-stopped
+
+  # ── Celery Worker ──────────────────────────────────────
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile.api
+    container_name: autotest-worker
+    environment:
+      - ENV=${ENV:-dev}
+      - DB_PASSWORD=${DB_PASSWORD:-}
+      - API_KEY=${API_KEY:-}
+      - AUTOTEST_DB_URL=${AUTOTEST_DB_URL:-}
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/0
+    volumes:
+      - ./config:/app/config
+      - ./testcases:/app/testcases
+      - ./reports:/app/reports
+      - ./logs:/app/logs
+      - worker_data:/app/data
+    depends_on:
+      redis:
+        condition: service_healthy
+    command: >
+      celery -A worker.celery_app worker
+      --loglevel=info
+      --concurrency=4
+      --pool=prefork
+    restart: unless-stopped
+    deploy:
+      replicas: 1
+
+volumes:
+  redis_data:
+  api_data:
+  worker_data:

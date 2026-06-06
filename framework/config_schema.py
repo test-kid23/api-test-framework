@@ -73,17 +73,35 @@ class ReportConfig(BaseModel):
     output_dir: str = Field(default="reports", description="报告输出目录")
 
 
+class CeleryConfig(BaseModel):
+    """Celery 分布式执行配置
+
+    仅在 execution.mode = "distributed" 时生效。
+    """
+
+    model_config = ConfigDict(extra="ignore")
+
+    broker_url: str = Field(default="redis://localhost:6379/0", description="Celery broker URL")
+    result_backend: str = Field(default="redis://localhost:6379/0", description="Celery result backend URL")
+    task_serializer: str = Field(default="json", description="任务序列化格式")
+    result_serializer: str = Field(default="json", description="结果序列化格式")
+    task_track_started: bool = Field(default=True, description="是否跟踪任务 STARTED 状态")
+    worker_concurrency: int = Field(default=4, ge=1, le=16, description="Worker 并发数")
+
+
 class ExecutionConfig(BaseModel):
     """执行配置
 
     mode: 执行模式，local 或 distributed
-    parallel_workers: 并行工作线程数，1~16
+    parallel_workers: 本地模式并行工作线程数，1~16
+    celery: 分布式执行 Celery 配置（仅在 distributed 模式下生效）
     """
 
     model_config = ConfigDict(extra="ignore")
 
     mode: Literal["local", "distributed"] = Field(default="local", description="执行模式")
     parallel_workers: int = Field(default=1, ge=1, le=16, description="并行工作线程数，范围 1~16")
+    celery: CeleryConfig = Field(default_factory=CeleryConfig, description="Celery 分布式配置")
 
 
 class DBConfig(BaseModel):
