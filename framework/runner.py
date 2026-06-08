@@ -25,10 +25,12 @@ import threading
 import time
 from typing import Any
 
+import httpx
+
 from framework.assertion import AssertionEngine
 from framework.context import TestContext
 from framework.db import DBAsserter, DBConnectionManager, DBExecutor
-from framework.exceptions import CaseTimeoutError, NoExecutorFoundError
+from framework.exceptions import AutoTestException, CaseTimeoutError, NoExecutorFoundError
 from framework.executors.base import StepExecutor
 from framework.executors.http_executor import HttpStepExecutor
 from framework.executors.ws_async_executor import AsyncWsStepExecutor
@@ -189,10 +191,20 @@ class TestRunner:
                     "suite_setup_done",
                     extracted_vars=list(setup_extracted.keys()),
                 )
-            except Exception as e:
+            except (AutoTestException, httpx.HTTPError, asyncio.TimeoutError) as e:
                 self._plugin_manager.dispatch("error", error=e, case=suite)
                 suite_result.setup_error = str(e)
                 logger.error("suite_setup_failed", error=str(e), suite_name=suite.name)
+                return suite_result
+            except Exception as e:
+                logger.error(
+                    "suite_setup_unexpected_error",
+                    error=str(e),
+                    suite_name=suite.name,
+                    exc_info=True,
+                )
+                self._plugin_manager.dispatch("error", error=e, case=suite)
+                suite_result.setup_error = str(e)
                 return suite_result
 
         # 执行每个用例
@@ -228,7 +240,17 @@ class TestRunner:
                     "teardown", phase="after", case=suite, variables=suite_variables
                 )
                 logger.info("suite_teardown_done")
+            except (AutoTestException, httpx.HTTPError, asyncio.TimeoutError) as e:
+                self._plugin_manager.dispatch("error", error=e, case=suite)
+                suite_result.teardown_error = str(e)
+                logger.warning("suite_teardown_failed", error=str(e), suite_name=suite.name)
             except Exception as e:
+                logger.error(
+                    "suite_teardown_unexpected_error",
+                    error=str(e),
+                    suite_name=suite.name,
+                    exc_info=True,
+                )
                 self._plugin_manager.dispatch("error", error=e, case=suite)
                 suite_result.teardown_error = str(e)
                 logger.warning("suite_teardown_failed", error=str(e), suite_name=suite.name)
@@ -271,7 +293,15 @@ class TestRunner:
         def _execute() -> None:
             try:
                 result_holder["value"] = self._do_run_case(case, suite_variables)
+            except (AutoTestException, httpx.HTTPError, asyncio.TimeoutError) as e:
+                error_holder["exception"] = e
             except Exception as e:
+                logger.error(
+                    "unexpected_case_execution_error",
+                    case_name=case.name,
+                    error=str(e),
+                    exc_info=True,
+                )
                 error_holder["exception"] = e
 
         thread = threading.Thread(
@@ -415,13 +445,24 @@ class TestRunner:
         except NoExecutorFoundError:
             self._plugin_manager.dispatch("case_end", case=case, result=case_result)
             raise  # 框架配置错误，直接向上传播，不做捕获
-        except Exception as e:
+        except (AutoTestException, httpx.HTTPError, asyncio.TimeoutError) as e:
             case_result.passed = False
             case_result.status = CaseStatus.FAIL
             case_result.error = str(e)
             # ── 插件钩子：on_error ──
             self._plugin_manager.dispatch("error", error=e, case=case)
             logger.error("case_execution_error", case_name=case.name, error=str(e), exc_info=True)
+        except Exception as e:
+            logger.error(
+                "case_unexpected_error",
+                case_name=case.name,
+                error=str(e),
+                exc_info=True,
+            )
+            case_result.passed = False
+            case_result.status = CaseStatus.FAIL
+            case_result.error = str(e)
+            self._plugin_manager.dispatch("error", error=e, case=case)
 
         case_result.elapsed_ms = (time.time() - start_time) * 1000
 
@@ -617,7 +658,7 @@ class TestRunner:
         except NoExecutorFoundError:
             self._plugin_manager.dispatch("case_end", case=case, result=case_result)
             raise
-        except Exception as e:
+        except (AutoTestException, httpx.HTTPError, asyncio.TimeoutError) as e:
             case_result.passed = False
             case_result.status = CaseStatus.FAIL
             case_result.error = str(e)
@@ -625,6 +666,17 @@ class TestRunner:
             logger.error(
                 "case_execution_error", case_name=case.name, error=str(e), exc_info=True
             )
+        except Exception as e:
+            logger.error(
+                "case_unexpected_error",
+                case_name=case.name,
+                error=str(e),
+                exc_info=True,
+            )
+            case_result.passed = False
+            case_result.status = CaseStatus.FAIL
+            case_result.error = str(e)
+            self._plugin_manager.dispatch("error", error=e, case=case)
 
         case_result.elapsed_ms = (time.time() - start_time) * 1000
 
@@ -669,7 +721,7 @@ class TestRunner:
                 case=case,
             )
         except Exception:
-            pass  # 清理阶段不容忍二次异常
+            logger.warning("cleanup_stage_exception", exc_info=True)
         finally:
             clear_trace_id()
 
@@ -705,5 +757,7 @@ class TestRunner:
 
         try:
             asyncio.run(self._notification_service.notify(suite_result))
-        except Exception as e:
+        except (AutoTestException, httpx.HTTPError, asyncio.TimeoutError) as e:
             logger.warning("notification_dispatch_failed", error=str(e))
+        except Exception as e:
+            logger.error("notification_dispatch_unexpected_error", error=str(e), exc_info=True)

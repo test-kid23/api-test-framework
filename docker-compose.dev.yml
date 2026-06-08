@@ -1,0 +1,67 @@
+# ═══════════════════════════════════════════════════════════
+# AutoTest Framework · 开发环境 Docker Compose
+#
+# 与 docker-compose.yml 的差异:
+#   - API 开启热重载（--reload）
+#   - 源码挂载（修改代码即时生效）
+#   - 端口直接暴露（跳过 Nginx，方便调试）
+#   - PostgreSQL / Redis 端口暴露
+#   - 调试日志级别
+#
+# 启动:
+#   cp .env.example .env
+#   docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d
+#
+# 仅启动基础设施（本地跑 API）:
+#   docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d postgres redis
+#   uvicorn api.main:app --reload --port 8000
+# ═══════════════════════════════════════════════════════════
+
+services:
+  # ═══════════════════════════════════════════════════════
+  # FastAPI · 开发模式（热重载 + 源码挂载）
+  # ═══════════════════════════════════════════════════════
+  api:
+    ports:
+      - "8000:8000"                       # 直接暴露端口
+    environment:
+      - ENV=${ENV:-dev}
+      - UVICORN_LOG_LEVEL=debug
+      - UVICORN_RELOAD=true               # 触发 --reload 参数
+      # 开发模式使用 SQLite 本地数据库（跳过 PostgreSQL）
+      # 如需连接 PostgreSQL，注释下行并确保 AUTOTEST_DB_URL 正确设置
+      - AUTOTEST_DB_URL=${AUTOTEST_DB_URL:-postgresql+asyncpg://autotest:${POSTGRES_PASSWORD:-autotest}@postgres:5432/autotest}
+    volumes:
+      # 开发模式：挂载源码目录，代码修改即时生效
+      - ./framework:/app/framework:ro
+      - ./api:/app/api:ro
+      - ./worker:/app/worker:ro
+      - ./assertions:/app/assertions:ro
+      - ./config:/app/config:ro
+      - ./testcases:/app/testcases:ro
+      - ./reports:/app/reports
+      - ./logs:/app/logs
+
+  # ═══════════════════════════════════════════════════════
+  # Worker · 开发模式（降低并发 + 详细日志）
+  # ═══════════════════════════════════════════════════════
+  worker:
+    environment:
+      - CELERY_LOG_LEVEL=debug
+      - WORKER_CONCURRENCY=2              # 降低开发环境并发
+    volumes:
+      - ./framework:/app/framework:ro
+      - ./api:/app/api:ro
+      - ./worker:/app/worker:ro
+      - ./assertions:/app/assertions:ro
+      - ./config:/app/config:ro
+      - ./testcases:/app/testcases:ro
+      - ./reports:/app/reports
+      - ./logs:/app/logs
+
+  # ═══════════════════════════════════════════════════════
+  # Nginx · 关闭（开发模式直接访问 API）
+  # ═══════════════════════════════════════════════════════
+  nginx:
+    profiles:
+      - disabled                          # 开发模式禁用 nginx

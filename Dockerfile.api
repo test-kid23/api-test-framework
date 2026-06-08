@@ -27,7 +27,10 @@ COPY . .
 RUN pip install --no-cache-dir -e ".[all,distributed]"
 
 # ── 运行时目录 ──
-RUN mkdir -p reports/allure-results reports/coverage logs
+RUN mkdir -p reports/allure-results reports/coverage logs data
+
+# ── 入口脚本可执行权限 ──
+RUN chmod +x docker/entrypoint.sh
 
 EXPOSE 8000
 

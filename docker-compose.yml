@@ -1,26 +1,72 @@
-version: "3.8"
-
 # ═══════════════════════════════════════════════════════════
-# AutoTest Framework · 分布式执行栈
+# AutoTest Framework · 生产级全栈部署
 #
 # 服务:
-#   redis    — Celery broker + result backend
-#   api      — FastAPI REST 服务（执行触发 + 结果查询）
-#   worker   — Celery Worker（消费执行任务）
+#   postgres  — 主数据库（SQLAlchemy + asyncpg）
+#   redis     — Celery broker + result backend
+#   api       — FastAPI REST 服务（含 Swagger UI /docs）
+#   worker    — Celery Worker（分布式测试执行）
+#   nginx     — 反向代理（路由 /api → FastAPI，/docs → Swagger）
 #
-# 使用:
-#   本地模式:    docker-compose up api
-#   分布式模式:  docker-compose up -d redis api worker
-#   多 Worker:   docker-compose up -d --scale worker=4
+# 启动:
+#   cp .env.example .env
+#   # 编辑 .env 修改密码
+#   docker compose up -d
+#
+# 验证:
+#   curl http://localhost/health          # 健康检查
+#   open http://localhost/docs            # Swagger UI
+#   docker compose logs -f api           # 查看 API 日志
+#
+# 扩展 Worker:
+#   docker compose up -d --scale worker=4
+#
+# 停止 + 清理数据:
+#   docker compose down -v
 # ═══════════════════════════════════════════════════════════
 
 services:
-  # ── Redis ──────────────────────────────────────────────
+  # ═══════════════════════════════════════════════════════
+  # PostgreSQL · 主数据库
+  # ═══════════════════════════════════════════════════════
+  postgres:
+    image: postgres:16-alpine
+    container_name: autotest-postgres
+    env_file:
+      - .env
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-autotest}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-autotest}
+      POSTGRES_DB: ${POSTGRES_DB:-autotest}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      # 可选：初始化脚本
+      # - ./docker/init.sql:/docker-entrypoint-initdb.d/init.sql
+    ports:
+      # 仅开发/调试时暴露，生产环境建议注释掉
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-autotest} -d ${POSTGRES_DB:-autotest}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+    restart: unless-stopped
+    networks:
+      - autotest_net
+
+  # ═══════════════════════════════════════════════════════
+  # Redis · 消息队列 + 结果缓存
+  # ═══════════════════════════════════════════════════════
   redis:
     image: redis:7-alpine
     container_name: autotest-redis
-    ports:
-      - "6379:6379"
+    command: >
+      redis-server
+      --save 60 1
+      --loglevel warning
+      --maxmemory 256mb
+      --maxmemory-policy allkeys-lru
     volumes:
       - redis_data:/data
     healthcheck:
@@ -29,71 +75,126 @@ services:
       timeout: 3s
       retries: 5
     restart: unless-stopped
+    networks:
+      - autotest_net
 
-  # ── FastAPI 服务 ───────────────────────────────────────
+  # ═══════════════════════════════════════════════════════
+  # FastAPI · REST 服务 + Swagger UI
+  # ═══════════════════════════════════════════════════════
   api:
     build:
       context: .
       dockerfile: Dockerfile.api
     container_name: autotest-api
-    ports:
-      - "8000:8000"
+    env_file:
+      - .env
     environment:
       - ENV=${ENV:-dev}
-      - DB_PASSWORD=${DB_PASSWORD:-}
+      - AUTOTEST_DB_URL=${AUTOTEST_DB_URL}
+      - CELERY_BROKER_URL=${CELERY_BROKER_URL:-redis://redis:6379/0}
+      - CELERY_RESULT_BACKEND=${CELERY_RESULT_BACKEND:-redis://redis:6379/0}
       - API_KEY=${API_KEY:-}
-      - AUTOTEST_DB_URL=${AUTOTEST_DB_URL:-}
-      - CELERY_BROKER_URL=redis://redis:6379/0
-      - CELERY_RESULT_BACKEND=redis://redis:6379/0
+      # PostgreSQL 连接参数（供 entrypoint.sh 等待使用）
+      - PGHOST=postgres
+      - PGPORT=5432
+      - PGUSER=${POSTGRES_USER:-autotest}
+      - PGPASSWORD=${POSTGRES_PASSWORD:-autotest}
+      - PGDATABASE=${POSTGRES_DB:-autotest}
     volumes:
-      - ./config:/app/config
-      - ./testcases:/app/testcases
+      - ./config:/app/config:ro
+      - ./testcases:/app/testcases:ro
       - ./reports:/app/reports
       - ./logs:/app/logs
       - api_data:/app/data
-    depends_on:
-      redis:
-        condition: service_healthy
+    entrypoint: ["/app/docker/entrypoint.sh"]
     command: >
       uvicorn api.main:app
       --host 0.0.0.0
       --port 8000
-      --reload
-      --log-level info
+      --log-level ${UVICORN_LOG_LEVEL:-info}
+      ${UVICORN_RELOAD:+--reload}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
     restart: unless-stopped
+    networks:
+      - autotest_net
 
-  # ── Celery Worker ──────────────────────────────────────
+  # ═══════════════════════════════════════════════════════
+  # Celery Worker · 分布式测试执行
+  # ═══════════════════════════════════════════════════════
   worker:
     build:
       context: .
       dockerfile: Dockerfile.api
     container_name: autotest-worker
+    env_file:
+      - .env
     environment:
       - ENV=${ENV:-dev}
-      - DB_PASSWORD=${DB_PASSWORD:-}
+      - AUTOTEST_DB_URL=${AUTOTEST_DB_URL}
+      - CELERY_BROKER_URL=${CELERY_BROKER_URL:-redis://redis:6379/0}
+      - CELERY_RESULT_BACKEND=${CELERY_RESULT_BACKEND:-redis://redis:6379/0}
       - API_KEY=${API_KEY:-}
-      - AUTOTEST_DB_URL=${AUTOTEST_DB_URL:-}
-      - CELERY_BROKER_URL=redis://redis:6379/0
-      - CELERY_RESULT_BACKEND=redis://redis:6379/0
     volumes:
-      - ./config:/app/config
-      - ./testcases:/app/testcases
+      - ./config:/app/config:ro
+      - ./testcases:/app/testcases:ro
       - ./reports:/app/reports
       - ./logs:/app/logs
       - worker_data:/app/data
-    depends_on:
-      redis:
-        condition: service_healthy
     command: >
       celery -A worker.celery_app worker
-      --loglevel=info
-      --concurrency=4
+      --loglevel=${CELERY_LOG_LEVEL:-info}
+      --concurrency=${WORKER_CONCURRENCY:-4}
       --pool=prefork
+      --max-tasks-per-child=100
+      --time-limit=1800
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
     restart: unless-stopped
     deploy:
       replicas: 1
+    networks:
+      - autotest_net
 
+  # ═══════════════════════════════════════════════════════
+  # Nginx · 反向代理
+  # ═══════════════════════════════════════════════════════
+  nginx:
+    image: nginx:1.26-alpine
+    container_name: autotest-nginx
+    ports:
+      - "${NGINX_PORT:-80}:80"
+    volumes:
+      - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
+    depends_on:
+      - api
+    restart: unless-stopped
+    networks:
+      - autotest_net
+
+# ═══════════════════════════════════════════════════════
+# 数据卷
+# ═══════════════════════════════════════════════════════
 volumes:
+  postgres_data:
+    name: autotest_postgres_data
   redis_data:
+    name: autotest_redis_data
   api_data:
+    name: autotest_api_data
   worker_data:
+    name: autotest_worker_data
+
+# ═══════════════════════════════════════════════════════
+# 网络
+# ═══════════════════════════════════════════════════════
+networks:
+  autotest_net:
+    name: autotest_net
+    driver: bridge

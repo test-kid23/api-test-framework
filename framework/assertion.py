@@ -251,7 +251,7 @@ class AssertionEngine:
                 if not result.passed:
                     logger.warning("assertion_failed", path=result.path, expected=result.expected,
                                    actual=result.actual, operator=result.operator)
-            except Exception as e:
+            except (AssertionError, TypeError, KeyError) as e:
                 results.append(
                     AssertResult(
                         passed=False,

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import re
 from typing import Any
 
@@ -47,7 +48,7 @@ class Extractor:
                     logger.warning("variable_extract_failed", var_name=item.var_name, reason="value is None with no default")
             except ExtractorError:
                 raise
-            except Exception as e:
+            except (KeyError, IndexError, TypeError, json.JSONDecodeError) as e:
                 if item.default is not None:
                     results[item.var_name] = item.default
                     logger.debug("variable_extracted_fallback", var_name=item.var_name, default=item.default)
@@ -80,7 +81,7 @@ class Extractor:
                     results[item.var_name] = value
                 elif item.default is not None:
                     results[item.var_name] = item.default
-            except Exception as e:
+            except (KeyError, IndexError, TypeError, json.JSONDecodeError) as e:
                 if item.default is not None:
                     results[item.var_name] = item.default
                 else:
