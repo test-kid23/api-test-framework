@@ -1469,6 +1469,33 @@ YAML 文件 → YamlCollector 收集 → YamlFunction(pytest.Function) → runne
     → 变量提升（step → case）
 ```
 
+## 前端管理界面
+
+> Phase 4 新增，基于 React 18 + Vite + shadcn/ui 构建。
+
+```bash
+# 进入前端目录
+cd frontend
+
+# 安装依赖
+npm install
+
+# 开发模式
+npm run dev
+
+# 构建到 api/static/
+npm run build
+```
+
+| 页面 | 路由 | 功能 |
+|------|------|------|
+| 用例列表 | `/cases` | 分页表格、搜索/筛选、编辑/删除操作 |
+| 用例编辑 | `/cases/new`, `/cases/:id/edit` | 创建/编辑表单、YAML 编辑、标签/优先级 |
+| 执行历史 | `/executions` | 时间线列表、状态筛选 |
+| 执行详情 | `/executions/:id` | 通过率、耗时、用例结果明细 |
+| 报告看板 | `/dashboard` | 通过率趋势图、失败分类饼图、Top5 不稳定接口 |
+| 环境管理 | `/environments` | 环境 CRUD、变量管理 |
+
 ---
 
 ## License

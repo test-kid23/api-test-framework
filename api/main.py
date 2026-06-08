@@ -82,28 +82,27 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 
     # ── 启动调度器 ──
     try:
-        from api.dependencies import _init_db, _session_factory
+        import api.dependencies as deps
 
-        # 确保数据库已初始化
-        _init_db()
+        # 确保数据库已初始化（会设置 deps._session_factory）
+        deps._init_db()
 
-        # 获取数据库 URL
+        # 获取数据库 URL（同步引擎 URL，供 APScheduler SQLAlchemyJobStore 使用）
+        # 使用与 _init_db 相同的 db_url 计算逻辑，确保 ORM 和 JobStore 使用同一数据库
         dsn_override = os.environ.get("AUTOTEST_DB_URL")
         if dsn_override:
             sync_url = _to_sync_db_url(dsn_override)
         else:
+            from framework.persistence.database import get_db_url
             from framework.config import ConfigLoader
 
             loader = ConfigLoader()
             project_config, _ = loader.load()
-            db_config = project_config.db
-            # 构建同步 URL
-            if hasattr(db_config, "dsn"):
-                sync_url = _to_sync_db_url(db_config.dsn)
-            else:
-                sync_url = "sqlite:///data/autotest.db"
+            async_url = get_db_url(project_config.db)
+            sync_url = _to_sync_db_url(async_url)
 
-        scheduler = get_scheduler(_session_factory, sync_url)
+        # 关键修复：通过模块属性访问 _session_factory，而非导入时的快照值
+        scheduler = get_scheduler(deps._session_factory, sync_url)
         await scheduler.start()
         _log.info("scheduler_lifecycle_started")
     except Exception as e:

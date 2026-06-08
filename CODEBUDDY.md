@@ -59,8 +59,18 @@ framework/          # 核心测试引擎（不依赖 api/）
   report/           # 报告引擎
   utils/            # 工具模块
 api/                # FastAPI REST 服务层（依赖 framework/）
+  static/           #   前端构建产物（Vite 输出）
 assertions/         # 自定义断言操作符扩展
 config/             # YAML 配置文件
+frontend/           # 管理前端（React 18 + Vite + shadcn/ui）
+  src/
+    api/            #   API 封装（Axios + TanStack Query）
+    components/     #   UI 组件（shadcn/ui + 布局）
+    hooks/          #   TanStack Query Hooks
+    pages/          #   页面组件
+    router/         #   React Router 6
+    store/          #   Zustand 状态管理
+    types/          #   TypeScript 类型
 testcases/          # YAML 测试用例
 tests/              # 单元测试与冒烟测试
 ```
