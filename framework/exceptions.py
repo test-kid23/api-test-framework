@@ -388,3 +388,55 @@ class TaskResultTimeoutError(DistributedExecutionError):
         )
         self.task_id = task_id
         self.timeout_seconds = timeout_seconds
+
+
+# ==================== 通知异常 ====================
+
+
+class NotificationError(AutoTestException):
+    """通知模块异常基类
+
+    所有通知相关异常继承此类，便于统一捕获和处理。
+    """
+
+    pass
+
+
+class NotificationSendError(NotificationError):
+    """通知发送失败
+
+    Attributes:
+        channel: 发送失败的渠道名称。
+        detail: 失败详情。
+    """
+
+    def __init__(self, channel: str, detail: str = "", *, trace_id: str = "") -> None:
+        super().__init__(
+            f"通知发送失败 [{channel}]" + (f": {detail}" if detail else ""),
+            trace_id=trace_id,
+        )
+        self.channel = channel
+        self.detail = detail
+
+
+class NotificationConfigError(NotificationError):
+    """通知配置错误
+
+    Attributes:
+        channel: 配置错误的渠道名称。
+        field: 缺失或错误的配置字段。
+    """
+
+    def __init__(
+        self, channel: str = "", field: str = "", message: str = "", *, trace_id: str = ""
+    ) -> None:
+        if not message:
+            parts = ["通知配置错误"]
+            if channel:
+                parts.append(f"[{channel}]")
+            if field:
+                parts.append(f": 缺少或无效的 {field}")
+            message = "".join(parts)
+        super().__init__(message, trace_id=trace_id)
+        self.channel = channel
+        self.field = field

@@ -442,6 +442,7 @@ class ProjectConfig:
         execution: 执行配置（并发度等）。
         db: 数据库连接配置。
         fixtures: Fixture 全局配置。
+        notifications: 通知服务配置。
         persistence: 持久化开关与配置。
         settings: 通用设置（merge_strategy/hot_reload 等）。
         case_timeout: 全局用例超时秒数。
@@ -456,6 +457,7 @@ class ProjectConfig:
     execution: dict[str, Any] = field(default_factory=dict)
     db: dict[str, dict[str, Any]] = field(default_factory=dict)
     fixtures: dict[str, Any] = field(default_factory=dict)
+    notifications: dict[str, Any] = field(default_factory=dict)
     persistence: dict[str, Any] = field(default_factory=dict)
     settings: dict[str, Any] = field(default_factory=dict)
     case_timeout: int = 300

@@ -3,7 +3,8 @@
 持久化报告：
 - _persistence  fixture（session scope）：创建 SQLAlchemy AsyncEngine + 执行记录。
 - pytest_runtest_makereport 钩子：每个用例结束后将 CaseResult 写入 execution_results 表。
-- pytest_sessionfinish 钩子：全部用例结束后更新 execution 状态为 passed/failed。
+- pytest_sessionfinish 钩子：全部用例结束后更新 execution 状态为 passed/failed，
+  并根据配置触发通知。
 """
 
 from __future__ import annotations
@@ -23,6 +24,7 @@ from framework.config import ConfigLoader
 from framework.context import TestContext
 from framework.db import DBConnectionManager
 from framework.models import EnvConfig, ProjectConfig
+from framework.notifications.service import NotificationService
 from framework.persistence.bridge import run_async
 from framework.persistence.database import create_async_engine
 from framework.persistence.models.base import Base
@@ -117,6 +119,7 @@ def runner(
 
 
 _saved_results: int = 0  # 计数器：已持久化的用例数
+_failed_cases: list[dict[str, str]] = []  # 失败用例收集器（供通知使用）
 
 
 @pytest.fixture(scope="session")
@@ -210,12 +213,46 @@ def _persistence(request: pytest.FixtureRequest) -> Generator[dict[str, Any], No
 
 @pytest.hookimpl(trylast=True)
 def pytest_sessionfinish(session: pytest.Session) -> None:
-    """Session 结束时确保 _persistence fixture 已触发清理。
+    """Session 结束时触发通知（如已配置）。
 
-    如果 _persistence fixture 未被任何用例引用（例如只运行了空标记），
-    此 hook 作为兜底什么都不做（fixture 的 yield 清理已处理）。
+    集成 NotificationService，根据配置的通知规则发送多渠道通知。
     """
-    pass  # 实际清理在 _persistence fixture 的 yield 之后执行
+    global _saved_results, _failed_cases
+
+    # 通知仅在持久化启用且有结果时才运行
+    if _saved_results == 0:
+        return
+
+    # 获取配置
+    env_name = session.config.getoption("--env", "dev")
+    loader = ConfigLoader()
+    project_config, env_config = loader.load(env_name)
+
+    notifications_cfg = project_config.notifications
+    if not notifications_cfg.get("enabled", False):
+        return
+
+    try:
+        service = NotificationService.from_config(notifications_cfg, env_name=env_config.name)
+        passed_count = _saved_results - len(_failed_cases)
+        failed_count = len(_failed_cases)
+
+        import asyncio
+
+        asyncio.run(
+            service.notify_result(
+                suite_name=f"pytest-{env_name}",
+                total=_saved_results,
+                passed=passed_count,
+                failed=failed_count,
+                failed_cases=_failed_cases,
+            )
+        )
+    except Exception as e:
+        Logger.get("conftest").warning(
+            "pytest_notification_failed",
+            error=str(e),
+        )
 
 
 # ── YAML 收集 + 报告 + 持久化 ──────────────────────────────────────
@@ -251,7 +288,7 @@ def pytest_runtest_makereport(item: Any, call: Any) -> Any:
 
 def _save_case_result(item: Any, case_result: Any) -> None:
     """将单个 CaseResult 通过 ExecutionResultRepository 写入 execution_results 表。"""
-    global _saved_results
+    global _saved_results, _failed_cases
 
     persistence = getattr(item.config, "_persistence_state", None)
     if persistence is None:
@@ -261,6 +298,13 @@ def _save_case_result(item: Any, case_result: Any) -> None:
     execution_id = persistence["execution_id"]
     suite_name = getattr(item, "_yaml_suite_name", "unknown")
     case_name = getattr(case_result, "case_name", item.name)
+
+    # 跟踪失败用例
+    if getattr(case_result, "passed", True) is False:
+        _failed_cases.append({
+            "name": f"{suite_name}::{case_name}",
+            "error": getattr(case_result, "error", "未知错误") or "未知错误",
+        })
 
     async def _save() -> None:
         from sqlalchemy.ext.asyncio import async_sessionmaker

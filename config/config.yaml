@@ -113,6 +113,32 @@ persistence:
   enabled: true                         # 是否启用测试结果自动持久化到数据库（默认开启，本地调试可关闭）
 
 # ----------------------------------------------------------
+# 通知配置（对应通知服务）
+# ----------------------------------------------------------
+notifications:
+  enabled: false                        # 是否启用通知服务
+  rule: on_failure                      # 通知规则: always(始终) | on_failure(仅失败) | failure_rate(失败率阈值)
+  failure_threshold: 0.0                # 失败率阈值 0.0~1.0（仅 rule=failure_rate 时生效）
+  report_url: ""                        # 报告链接 URL，将嵌入通知消息中
+  channels:
+    wecom:                              # 企业微信群机器人
+      enabled: false
+      webhook_url: ""                   # https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=xxxxx
+    dingtalk:                           # 钉钉群机器人
+      enabled: false
+      webhook_url: ""                   # https://oapi.dingtalk.com/robot/send?access_token=xxxxx
+      secret: ""                        # 加签密钥（SEC 开头，可选）
+    email:                              # 邮件通知（骨架）
+      enabled: false
+      smtp_host: ""
+      smtp_port: 587
+      username: ""
+      password: ""
+      from_addr: ""
+      to_addrs: []
+      use_tls: true
+
+# ----------------------------------------------------------
 # 数据库配置（对应 DBConfig Schema）
 # ----------------------------------------------------------
 db:

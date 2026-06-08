@@ -8,6 +8,10 @@
 - 插件可按 priority 排序，高优先级插件（数值小）先执行
 - 插件间通过 PluginContext 共享数据
 
+通知系统集成：
+- 在 run_suite() 完成后，根据通知规则评估并发送多渠道通知
+- 通过 NotificationService 编排渠道分发
+
 超时控制：
 - 同步路径 (run_case): 在后台线程中执行用例，主线程 join 等待，超时返回 TIMEOUT
 - 异步路径 (arun_case): 使用 asyncio.wait_for() 包裹协程执行
@@ -31,6 +35,7 @@ from framework.executors.ws_async_executor import AsyncWsStepExecutor
 from framework.extractor import Extractor
 from framework.fixtures_loader import FixtureLoader
 from framework.models import CaseResult, CaseStatus, EnvConfig, ProjectConfig, SuiteResult, TestCase, TestSuite
+from framework.notifications.service import NotificationService, ServiceConfig
 from framework.plugins.base import PluginBase
 from framework.plugins.manager import PluginContext, PluginManager
 from framework.report.base import NoopReportAdapter, ReportAdapter
@@ -66,6 +71,7 @@ class TestRunner:
         plugins: list[PluginBase] | None = None,
         auto_discover_plugins: bool = True,
         async_http_client: Any = None,  # AsyncHttpClient
+        notification_service: NotificationService | None = None,
     ) -> None:
         self._config = config
         self._env = env
@@ -76,6 +82,17 @@ class TestRunner:
         self._assertion_engine = AssertionEngine()
         self._extractor = Extractor()
         self._report_adapter = report_adapter or NoopReportAdapter()
+
+        # ── 通知服务 ──
+        if notification_service is not None:
+            self._notification_service = notification_service
+        elif config.notifications.get("enabled", False):
+            self._notification_service = NotificationService.from_config(
+                config.notifications,
+                env_name=env.name,
+            )
+        else:
+            self._notification_service = None
 
         # ── 插件系统 ──
         if plugin_manager is not None:
@@ -218,6 +235,9 @@ class TestRunner:
 
         # ── 插件钩子：on_suite_end ──
         self._plugin_manager.dispatch("suite_end", suite=suite, result=suite_result)
+
+        # ── 通知分发 ──
+        self._dispatch_notifications(suite_result)
 
         # 输出套件结果摘要
         logger.info(
@@ -670,3 +690,20 @@ class TestRunner:
         variables.update(suite.variables)
 
         return variables
+
+    def _dispatch_notifications(self, suite_result: SuiteResult) -> None:
+        """调度异步通知（从同步上下文中安全调用）
+
+        仅在通知服务已配置且启用时执行。
+        使用 asyncio.run() 桥接异步通知发送到同步 run_suite() 线程。
+
+        Args:
+            suite_result: 套件执行结果。
+        """
+        if self._notification_service is None:
+            return
+
+        try:
+            asyncio.run(self._notification_service.notify(suite_result))
+        except Exception as e:
+            logger.warning("notification_dispatch_failed", error=str(e))
