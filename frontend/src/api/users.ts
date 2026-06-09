@@ -2,8 +2,8 @@ import client from "./client";
 import type { AuthUser } from "@/store/authStore";
 
 export interface PaginatedUsers {
-  data: AuthUser[];
-  meta: {
+  items: AuthUser[];
+  pagination: {
     page: number;
     page_size: number;
     total: number;

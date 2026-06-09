@@ -84,8 +84,8 @@ async def list_users(
     users = (await session.execute(stmt)).scalars().all()
 
     return PaginatedResponse(
-        data=[_user_to_response(u) for u in users],
-        meta=PaginationMeta(
+        items=[_user_to_response(u) for u in users],
+        pagination=PaginationMeta(
             page=page,
             page_size=page_size,
             total=total,

@@ -109,8 +109,8 @@ export function UsersPage() {
     setError("");
     try {
       const res = await listUsers(page, pageSize, search || undefined);
-      setUsers(res.data);
-      setTotal(res.meta.total);
+      setUsers(res.items);
+      setTotal(res.pagination.total);
     } catch (err) {
       const msg =
         (err as { response?: { data?: { detail?: { error?: string } } } })
