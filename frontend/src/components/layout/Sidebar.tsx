@@ -13,6 +13,7 @@ import {
   Radio,
   Sparkles,
   Users,
+  Target,
 } from "lucide-react";
 import { useAppStore } from "@/store/appStore";
 import { useAuthStore } from "@/store/authStore";
@@ -42,6 +43,7 @@ const navGroups: NavGroup[] = [
     label: "数据分析",
     items: [
       { to: "/dashboard", label: "报告看板", icon: BarChart3 },
+      { to: "/coverage", label: "覆盖率分析", icon: Target },
     ],
   },
   {

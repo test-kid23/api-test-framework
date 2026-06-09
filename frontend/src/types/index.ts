@@ -572,3 +572,70 @@ export interface RoiStatsItem {
   estimated_hours_saved: number;
   recent_30d: Recent30dStats;
 }
+
+// ── Coverage ──────────────────────────────────────────────────
+
+export interface EndpointInfo {
+  method: string;
+  path: string;
+  summary: string;
+  tags: string[];
+  operation_id: string;
+  priority: string;
+}
+
+export interface CoverageGap {
+  endpoint: EndpointInfo;
+  has_similar: boolean;
+  similar_case_names: string[];
+}
+
+export interface CoverageGroup {
+  group_key: string;
+  total: number;
+  covered: number;
+  uncovered: number;
+  coverage_rate: number;
+}
+
+export interface CoverageReport {
+  spec_title: string;
+  spec_version: string;
+  total_endpoints: number;
+  covered_endpoints: number;
+  uncovered_endpoints: number;
+  coverage_rate: number;
+  coverage_percent: number;
+  by_tag: CoverageGroup[];
+  by_method: CoverageGroup[];
+  by_priority: CoverageGroup[];
+  gaps: CoverageGap[];
+  recommendations: EndpointInfo[];
+}
+
+export interface CoverageAnalysisRequest {
+  spec_url: string;
+}
+
+export interface CoverageGenerateRequest {
+  spec_url: string;
+  endpoints?: { method: string; path: string }[];
+  suite_name?: string;
+  limit?: number;
+}
+
+export interface GeneratedCaseItem {
+  name: string;
+  method: string;
+  path: string;
+  description: string;
+  tags: string[];
+  priority: string;
+  yaml_content: string;
+}
+
+export interface GenerateResultResponse {
+  total_generated: number;
+  generated_cases: GeneratedCaseItem[];
+  errors: string[];
+}
