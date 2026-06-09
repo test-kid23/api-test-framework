@@ -12,8 +12,10 @@ import {
   Server,
   Radio,
   Sparkles,
+  Users,
 } from "lucide-react";
 import { useAppStore } from "@/store/appStore";
+import { useAuthStore } from "@/store/authStore";
 import { Separator } from "@/components/ui/separator";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { Button } from "@/components/ui/button";
@@ -57,11 +59,27 @@ const navGroups: NavGroup[] = [
       { to: "/schedules", label: "定时调度", icon: Clock },
     ],
   },
+  {
+    label: "权限管理",
+    items: [
+      { to: "/users", label: "用户管理", icon: Users, adminOnly: true },
+    ],
+  },
 ];
 
 export function Sidebar() {
   const sidebarOpen = useAppStore((s) => s.sidebarOpen);
   const toggleSidebar = useAppStore((s) => s.toggleSidebar);
+  const currentUser = useAuthStore((s) => s.user);
+  const isAdmin = currentUser?.role === "admin";
+
+  // 过滤掉非 admin 用户的 adminOnly 项
+  const visibleGroups = navGroups
+    .map((g) => ({
+      ...g,
+      items: g.items.filter((i) => !i.adminOnly || isAdmin),
+    }))
+    .filter((g) => g.items.length > 0);
 
   return (
     <aside
@@ -93,7 +111,7 @@ export function Sidebar() {
 
       {/* Navigation */}
       <nav className="flex-1 space-y-4 overflow-y-auto p-2">
-        {navGroups.map((group) => (
+        {visibleGroups.map((group) => (
           <div key={group.label}>
             {sidebarOpen && (
               <h3 className="mb-1 px-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground">

@@ -11,6 +11,7 @@ from api.routers import (
     reports,
     schedules,
     suites,
+    users,
 )
 
 __all__ = [
@@ -24,4 +25,5 @@ __all__ = [
     "reports",
     "schedules",
     "suites",
+    "users",
 ]

@@ -19,18 +19,13 @@ class LoginRequest(BaseModel):
 
 
 class RegisterRequest(BaseModel):
-    """注册请求"""
+    """注册请求（公开注册，默认 viewer 角色，无权选择）"""
 
     username: str = Field(
         ..., min_length=3, max_length=128, description="用户名（3-128 字符）"
     )
     password: str = Field(
         ..., min_length=6, max_length=128, description="密码（最少 6 字符）"
-    )
-    role: str = Field(
-        default="viewer",
-        pattern="^(admin|editor|viewer)$",
-        description="角色: admin/editor/viewer，默认 viewer",
     )
 
     @field_validator("username")
@@ -39,6 +34,37 @@ class RegisterRequest(BaseModel):
         if not v.replace("_", "").replace("-", "").isalnum():
             raise ValueError("用户名只能包含字母、数字、下划线或连字符")
         return v
+
+
+class AdminCreateUserRequest(BaseModel):
+    """管理员创建用户请求（可指定角色）"""
+
+    username: str = Field(
+        ..., min_length=3, max_length=128, description="用户名（3-128 字符）"
+    )
+    password: str = Field(
+        ..., min_length=6, max_length=128, description="初始密码（最少 6 字符）"
+    )
+    role: str = Field(
+        default="viewer",
+        pattern="^(admin|editor|viewer)$",
+        description="角色: admin/editor/viewer",
+    )
+    is_active: bool = Field(default=True, description="是否启用")
+
+
+class AdminUpdateUserRequest(BaseModel):
+    """管理员更新用户请求"""
+
+    role: str | None = Field(
+        default=None,
+        pattern="^(admin|editor|viewer)$",
+        description="角色（可选）",
+    )
+    is_active: bool | None = Field(default=None, description="是否启用（可选）")
+    new_password: str | None = Field(
+        default=None, min_length=6, max_length=128, description="重置密码（可选）"
+    )
 
 
 class ChangePasswordRequest(BaseModel):

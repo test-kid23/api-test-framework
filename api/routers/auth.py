@@ -23,6 +23,8 @@ from api.auth import (
 )
 from api.dependencies import get_db_session
 from api.schemas.auth import (
+    AdminCreateUserRequest,
+    AdminUpdateUserRequest,
     ChangePasswordRequest,
     LoginRequest,
     LoginResponse,
@@ -117,7 +119,11 @@ async def register(
     body: RegisterRequest,
     session: AsyncSession = Depends(get_db_session),
 ):
-    """注册新用户（默认角色 viewer）。"""
+    """注册新用户（公开注册，硬编码为 viewer 角色，防止提权）。
+
+    安全设计：客户端不能通过注册请求提权，所有公开注册的用户都是 viewer。
+    需要提升权限（editor/admin）必须由 admin 在后台管理界面创建或修改。
+    """
     user_repo = UserRepository(session)
 
     # 检查用户名是否已存在
@@ -131,7 +137,8 @@ async def register(
     user = UserModel(
         username=body.username,
         password_hash=hash_password(body.password),
-        role=body.role,
+        role="viewer",  # 硬编码 viewer，禁止注册时指定角色
+        is_active=True,
     )
     created = await user_repo.create(user)
 

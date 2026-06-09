@@ -17,6 +17,8 @@ import { ReportsPage } from "@/pages/ReportsPage";
 import { MockRulesPage } from "@/pages/MockRulesPage";
 import { RecorderPage } from "@/pages/RecorderPage";
 import { SmartAssertionPage } from "@/pages/SmartAssertionPage";
+import { UsersPage } from "@/pages/UsersPage";
+import { RoleGuard } from "@/components/auth/RoleGuard";
 
 export const router = createHashRouter([
   {
@@ -51,6 +53,14 @@ export const router = createHashRouter([
       { path: "mocks", element: <MockRulesPage /> },
       { path: "recorder", element: <RecorderPage /> },
       { path: "smart-assertions", element: <SmartAssertionPage /> },
+      {
+        path: "users",
+        element: (
+          <RoleGuard roles={["admin"]}>
+            <UsersPage />
+          </RoleGuard>
+        ),
+      },
     ],
   },
 ]);
