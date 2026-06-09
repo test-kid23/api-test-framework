@@ -20,6 +20,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from api.auth import CurrentUser, check_project_access, get_current_user, require_role
 from api.dependencies import get_db_session
 from api.schemas.common import (
     MessageResponse,
@@ -77,6 +78,7 @@ def _orm_to_response(model: ScheduleModel) -> ScheduleResponse:
 async def create_schedule(
     body: ScheduleCreate,
     session: AsyncSession = Depends(get_db_session),
+    current_user: CurrentUser = Depends(require_role("admin", "editor")),
 ):
     """创建定时/周期调度任务，关联测试套件和环境。
 
@@ -118,6 +120,8 @@ async def create_schedule(
         interval_seconds=body.interval_seconds,
         enabled=body.enabled,
     )
+    if current_user.primary_project_id:
+        model.project_id = uuid.UUID(current_user.primary_project_id)
 
     repo = ScheduleRepository(session)
     created = await repo.create(model)
@@ -156,15 +160,28 @@ async def list_schedules(
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=20, ge=1, le=100),
     session: AsyncSession = Depends(get_db_session),
+    current_user: CurrentUser = Depends(get_current_user),
 ):
     """分页查询所有调度任务（按创建时间倒序）。"""
-    repo = ScheduleRepository(session)
+    stmt = select(ScheduleModel)
+
+    # 项目隔离：非 admin 用户只能看自己项目的调度
+    if not current_user.is_admin():
+        if current_user.project_ids:
+            stmt = stmt.where(
+                ScheduleModel.project_id.in_([uuid.UUID(pid) for pid in current_user.project_ids])
+                | ScheduleModel.project_id.is_(None)
+            )
+        else:
+            stmt = stmt.where(ScheduleModel.project_id.is_(None))
+
+    count_stmt = select(func.count()).select_from(stmt.subquery())
+    total = (await session.execute(count_stmt)).scalar_one()
+
     offset = (page - 1) * page_size
-    items, total = await repo.list(
-        offset=offset,
-        limit=page_size,
-        order_by=ScheduleModel.created_at.desc(),
-    )
+    stmt = stmt.order_by(ScheduleModel.created_at.desc()).offset(offset).limit(page_size)
+    result = await session.execute(stmt)
+    items = result.scalars().all()
 
     schedule_items = [_orm_to_response(m) for m in items]
     meta = PaginationMeta(
@@ -187,6 +204,7 @@ async def list_schedules(
 async def get_schedule(
     schedule_id: str,
     session: AsyncSession = Depends(get_db_session),
+    current_user: CurrentUser = Depends(get_current_user),
 ):
     """根据 ID 获取单个调度任务详情。"""
     try:
@@ -199,6 +217,7 @@ async def get_schedule(
     if model is None:
         raise HTTPException(status_code=404, detail="调度任务不存在")
 
+    check_project_access(str(model.project_id) if model.project_id else None, current_user, "调度")
     return SuccessResponse(data=_orm_to_response(model))
 
 
@@ -214,6 +233,7 @@ async def update_schedule(
     schedule_id: str,
     body: ScheduleUpdate,
     session: AsyncSession = Depends(get_db_session),
+    current_user: CurrentUser = Depends(require_role("admin", "editor")),
 ):
     """更新调度任务配置。修改后调度器中的作业也会同步更新。"""
     update_data = body.model_dump(exclude_unset=True)
@@ -229,6 +249,8 @@ async def update_schedule(
     model = await repo.get(uid)
     if model is None:
         raise HTTPException(status_code=404, detail="调度任务不存在")
+
+    check_project_access(str(model.project_id) if model.project_id else None, current_user, "调度")
 
     # 更新字段
     if body.name is not None:
@@ -278,6 +300,7 @@ async def update_schedule(
 async def delete_schedule(
     schedule_id: str,
     session: AsyncSession = Depends(get_db_session),
+    current_user: CurrentUser = Depends(require_role("admin", "editor")),
 ):
     """删除调度任务，同时从调度器中移除作业。"""
     try:
@@ -294,10 +317,13 @@ async def delete_schedule(
             pass
 
     repo = ScheduleRepository(session)
-    deleted = await repo.delete_by_id(uid)
-    if not deleted:
+    model = await repo.get(uid)
+    if model is None:
         raise HTTPException(status_code=404, detail="调度任务不存在")
 
+    check_project_access(str(model.project_id) if model.project_id else None, current_user, "调度")
+
+    deleted = await repo.delete_by_id(uid)
     await session.commit()
     _log.info("schedule_deleted", schedule_id=schedule_id)
     return MessageResponse(message=f"调度任务 {schedule_id} 已删除")
@@ -319,6 +345,7 @@ async def delete_schedule(
 async def run_schedule(
     schedule_id: str,
     session: AsyncSession = Depends(get_db_session),
+    current_user: CurrentUser = Depends(require_role("admin", "editor")),
 ):
     """手动触发一次调度执行（不修改调度周期）。
 
@@ -333,6 +360,8 @@ async def run_schedule(
     model = await repo.get(uid)
     if model is None:
         raise HTTPException(status_code=404, detail="调度任务不存在")
+
+    check_project_access(str(model.project_id) if model.project_id else None, current_user, "调度")
 
     if not model.enabled:
         raise HTTPException(status_code=400, detail="调度任务已禁用，请先启用")

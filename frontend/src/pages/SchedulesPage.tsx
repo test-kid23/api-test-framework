@@ -31,6 +31,7 @@ import { useSuites } from "@/hooks/useSuites";
 import { useEnvironments } from "@/hooks/useEnvironments";
 import { toast } from "sonner";
 import type { Schedule, ScheduleCreate, ScheduleTriggerType } from "@/types";
+import { usePermission } from "@/hooks/usePermission";
 
 const cronPresets = [
   { label: "每小时", value: "0 * * * *" },
@@ -57,6 +58,7 @@ export function SchedulesPage() {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingSchedule, setEditingSchedule] = useState<Schedule | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<Schedule | null>(null);
+  const { canEdit } = usePermission();
 
   const { data, isLoading } = useSchedules({ page: 1, page_size: 100 });
   const { data: suitesData } = useSuites({ page: 1, page_size: 100 });
@@ -168,9 +170,11 @@ export function SchedulesPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold">定时调度</h1>
+        {canEdit && (
         <Button onClick={openCreate}>
           <Plus className="mr-2 h-4 w-4" />新建调度
         </Button>
+        )}
       </div>
 
       {/* Schedule Table */}
@@ -209,7 +213,7 @@ export function SchedulesPage() {
                 icon={Clock}
                 title="暂无定时调度"
                 description="创建定时调度，让测试自动在指定时间运行"
-                action={{ label: "新建调度", onClick: openCreate }}
+                action={canEdit ? { label: "新建调度", onClick: openCreate } : undefined}
               />
             </div>
           ) : (
@@ -255,10 +259,11 @@ export function SchedulesPage() {
                         <Switch
                           checked={s.enabled}
                           onCheckedChange={() => handleToggleEnabled(s)}
-                          disabled={updateSchedule.isPending}
+                          disabled={updateSchedule.isPending || !canEdit}
                         />
                       </TableCell>
                       <TableCell>
+                        {canEdit && (
                         <div className="flex items-center gap-1">
                           <Button
                             variant="ghost"
@@ -283,6 +288,7 @@ export function SchedulesPage() {
                             <Trash2 className="h-4 w-4 text-destructive" />
                           </Button>
                         </div>
+                        )}
                       </TableCell>
                     </TableRow>
                   );

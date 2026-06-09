@@ -11,10 +11,12 @@ from typing import AsyncGenerator
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.openapi.utils import get_openapi
 from fastapi.responses import JSONResponse
 
-from api.routers import cases, environments, executions, reports, schedules, suites
+from api.routers import assertions, auth, cases, environments, executions, mocks, recorder, reports, schedules, suites
 from api.schemas.common import ErrorDetail, ErrorResponse
+from framework.mock.server import create_mock_app
 from framework.scheduler import get_scheduler
 from framework.utils.logger import Logger
 
@@ -43,12 +45,16 @@ DESCRIPTION = """
 """
 
 TAGS_METADATA = [
+    {"name": "auth", "description": "用户认证与授权"},
     {"name": "cases", "description": "测试用例 CRUD 操作"},
     {"name": "suites", "description": "测试套件管理"},
     {"name": "executions", "description": "执行触发与结果查询"},
     {"name": "reports", "description": "报告查询与分析"},
     {"name": "schedules", "description": "定时调度管理"},
     {"name": "environments", "description": "环境配置管理"},
+    {"name": "mocks", "description": "Mock 规则管理"},
+    {"name": "recorder", "description": "流量录制与回放"},
+    {"name": "smart-assertions", "description": "智能断言 — Schema 推断与变更检测"},
 ]
 
 
@@ -80,15 +86,23 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     """应用启动/关闭时的生命周期管理"""
     import os
 
+    # ── 数据库初始化 ──
+    import api.dependencies as deps
+
+    deps._init_db()
+
+    # ── 首次启动初始化（建表 + 默认管理员） ──
+    if deps._engine is not None:
+        try:
+            from api.init import init_app
+
+            await init_app(deps._engine, deps._session_factory)
+        except Exception as e:
+            _log.error("init_app_failed", error=str(e), exc_info=True)
+
     # ── 启动调度器 ──
     try:
-        import api.dependencies as deps
-
-        # 确保数据库已初始化（会设置 deps._session_factory）
-        deps._init_db()
-
         # 获取数据库 URL（同步引擎 URL，供 APScheduler SQLAlchemyJobStore 使用）
-        # 使用与 _init_db 相同的 db_url 计算逻辑，确保 ORM 和 JobStore 使用同一数据库
         dsn_override = os.environ.get("AUTOTEST_DB_URL")
         if dsn_override:
             sync_url = _to_sync_db_url(dsn_override)
@@ -101,12 +115,12 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
             async_url = get_db_url(project_config.db)
             sync_url = _to_sync_db_url(async_url)
 
-        # 关键修复：通过模块属性访问 _session_factory，而非导入时的快照值
+        # 通过模块属性访问 _session_factory，而非导入时的快照值
         scheduler = get_scheduler(deps._session_factory, sync_url)
         await scheduler.start()
-        _log.info("scheduler_lifecycle_started")
+        _log.info("scheduler_started")
     except Exception as e:
-        _log.error("scheduler_lifecycle_start_failed", error=str(e))
+        _log.error("scheduler_start_failed", error=str(e), exc_info=True)
 
     yield
 
@@ -118,7 +132,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
             await _scheduler.stop()
             _log.info("scheduler_lifecycle_stopped")
     except Exception as e:
-        _log.error("scheduler_lifecycle_stop_failed", error=str(e))
+        _log.error("scheduler_lifecycle_stop_failed", error=str(e), exc_info=True)
 
 
 # ==================== App 工厂 ====================
@@ -150,12 +164,19 @@ def create_app() -> FastAPI:
 
     # ── 路由注册 ─────────────────────────────────────
 
+    app.include_router(auth.router)
     app.include_router(cases.router)
     app.include_router(suites.router)
     app.include_router(executions.router)
     app.include_router(reports.router)
     app.include_router(schedules.router)
     app.include_router(environments.router)
+    app.include_router(mocks.router)
+    app.include_router(recorder.router)
+    app.include_router(assertions.router)
+
+    # ── Mock 服务器子应用 ────────────────────────────
+    app.mount("/_mock", create_mock_app())
 
     # ── 根路径 ───────────────────────────────────────
 
@@ -173,6 +194,33 @@ def create_app() -> FastAPI:
     @app.get("/health", include_in_schema=False)
     async def health():
         return {"status": "healthy"}
+
+    # ── OpenAPI Security Scheme ────────────────────
+    # 将 Bearer Token 认证添加到 Swagger UI，使"Authorize"按钮可见
+
+    def custom_openapi():
+        if app.openapi_schema:
+            return app.openapi_schema
+        openapi_schema = get_openapi(
+            title=app.title,
+            version=app.version,
+            description=app.description,
+            routes=app.routes,
+            tags=app.openapi_tags,
+        )
+        openapi_schema["components"]["securitySchemes"] = {
+            "BearerAuth": {
+                "type": "http",
+                "scheme": "bearer",
+                "bearerFormat": "JWT",
+                "description": "输入登录接口返回的 access_token（格式：Bearer {token}）",
+            }
+        }
+        # 不设置全局 security 要求，各端点自行通过 Depends 声明
+        app.openapi_schema = openapi_schema
+        return app.openapi_schema
+
+    app.openapi = custom_openapi
 
     # ── 全局异常处理器 ──────────────────────────────
 

@@ -84,6 +84,28 @@ fixtures:
   shell_sandbox: false            # 是否启用沙箱限制（敏感路径检查等）
 
 # ----------------------------------------------------------
+# Mock 服务配置
+# ----------------------------------------------------------
+mock:
+  enabled: true                   # 是否启用 Mock 服务（嵌入在 API 进程中）
+  prefix: "/_mock"                # Mock 服务路径前缀
+
+# ----------------------------------------------------------
+# 流量录制与回放配置
+# ----------------------------------------------------------
+recorder:
+  enabled: true                   # 是否启用流量录制功能
+  save_dir: "recordings"          # 录制文件保存目录
+  auto_record: false              # 是否自动录制（所有 HTTP 请求自动记录）
+  max_entries_per_session: 1000   # 单次会话最大录制条目数
+  replay:
+    timeout: 30                   # 回放单次请求超时（秒）
+    compare_headers: []           # 回放时需对比的响应头（空=对比全部，排除 ignore_headers）
+    ignore_headers: []            # 回放时忽略的响应头（空=使用默认列表）
+    ignore_body_keys: []          # 回放时忽略的响应体字段
+    strict_mode: false            # 严格模式（逐字段精确匹配）
+
+# ----------------------------------------------------------
 # 执行配置（对应 ExecutionConfig Schema）
 # ----------------------------------------------------------
 execution:
@@ -144,3 +166,14 @@ notifications:
 db:
   driver: sqlite                       # 数据库驱动: sqlite|mysql|postgresql
   dsn: ""                              # 数据源连接字符串
+
+# ----------------------------------------------------------
+# 认证配置（JWT + RBAC）
+# ----------------------------------------------------------
+auth:
+  jwt_secret: "autotest-secret-key-change-in-production"  # JWT 签名密钥（生产环境请通过环境变量 AUTOTEST_JWT_SECRET 覆盖）
+  token_expire_minutes: 480                                # Token 过期时间（分钟），默认 8 小时
+  default_admin:
+    username: "admin"                                      # 首次启动时自动创建的默认管理员用户名
+    password: "admin123"                                   # 默认管理员密码（首次登录后请立即修改）
+    project: "default"                                     # 默认项目名称

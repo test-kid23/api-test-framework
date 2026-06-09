@@ -9,6 +9,9 @@ import {
   Clock,
   Terminal,
   ChevronLeft,
+  Server,
+  Radio,
+  Sparkles,
 } from "lucide-react";
 import { useAppStore } from "@/store/appStore";
 import { Separator } from "@/components/ui/separator";
@@ -37,6 +40,14 @@ const navGroups: NavGroup[] = [
     label: "数据分析",
     items: [
       { to: "/dashboard", label: "报告看板", icon: BarChart3 },
+    ],
+  },
+  {
+    label: "测试工具",
+    items: [
+      { to: "/mocks", label: "Mock 规则", icon: Server },
+      { to: "/recorder", label: "流量录制", icon: Radio },
+      { to: "/smart-assertions", label: "智能断言", icon: Sparkles },
     ],
   },
   {

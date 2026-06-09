@@ -318,11 +318,11 @@ class FixtureAction:
     """Fixture 中的单个动作
 
     Attributes:
-        action_type: 动作类型（api_call/db_execute/wait/shell）。
+        action_type: 动作类型（api_call/db_execute/wait/shell/mock_setup/mock_teardown）。
         config: 动作配置参数。
     """
 
-    action_type: str  # api_call / db_execute / wait / shell
+    action_type: str  # api_call / db_execute / wait / shell / mock_setup / mock_teardown
     config: dict[str, Any] = field(default_factory=dict)
 
 
@@ -460,7 +460,11 @@ class ProjectConfig:
     notifications: dict[str, Any] = field(default_factory=dict)
     persistence: dict[str, Any] = field(default_factory=dict)
     settings: dict[str, Any] = field(default_factory=dict)
+    mock: dict[str, Any] = field(default_factory=dict)
+    recorder: dict[str, Any] = field(default_factory=dict)
     case_timeout: int = 300
+    jwt_secret: str = "autotest-default-secret-change-me"
+    jwt_expire_minutes: int = 480
 
 
 # ==================== 执行结果 ====================

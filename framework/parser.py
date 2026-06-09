@@ -449,7 +449,7 @@ class YAMLParser:
                 else:
                     # 尝试从 key 推断类型
                     for key, value in item.items():
-                        if key in ("api_call", "db_execute", "wait", "shell"):
+                        if key in ("api_call", "db_execute", "wait", "shell", "mock_setup", "mock_teardown"):
                             actions.append(
                                 FixtureAction(
                                     action_type=key,

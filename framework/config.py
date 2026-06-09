@@ -282,6 +282,7 @@ class ConfigLoader:
     def _build_project_config(self, raw: dict[str, Any]) -> ProjectConfig:
         """构建 ProjectConfig"""
         project = raw.get("project", {})
+        auth = raw.get("auth", {})
         return ProjectConfig(
             project_name=project.get("name", "API Test Suite"),
             version=project.get("version", "1.0.0"),
@@ -295,7 +296,11 @@ class ConfigLoader:
             notifications=raw.get("notifications", {}),
             persistence=raw.get("persistence", {}),
             settings=raw.get("settings", {}),
+            mock=raw.get("mock", {}),
+            recorder=raw.get("recorder", {}),
             case_timeout=raw.get("case_timeout", 300),
+            jwt_secret=auth.get("jwt_secret", "autotest-default-secret-change-me"),
+            jwt_expire_minutes=auth.get("token_expire_minutes", 480),
         )
 
     def _build_env_config(self, name: str, raw: dict[str, Any]) -> EnvConfig:

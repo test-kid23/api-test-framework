@@ -118,13 +118,15 @@ class TestRunner:
             self._db_executor = DBExecutor(db_manager, env.db, self._template)
             self._db_asserter = DBAsserter(self._db_executor, self._template)
 
-        # Fixture 加载器
+        # Fixture 加载器（注入 Mock 存储）
+        from framework.mock.rule_store import get_mock_store
         self._fixture_loader = FixtureLoader(
             http_client=http_client,
             db_executor=self._db_executor,
             template_engine=self._template,
             extractor=self._extractor,
             fixtures_config=config.fixtures,
+            mock_store=get_mock_store(),
         )
 
         # StepExecutor 策略链（默认：WS(Async) → HTTP）

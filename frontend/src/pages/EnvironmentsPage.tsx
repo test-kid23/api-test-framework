@@ -24,6 +24,7 @@ import { Plus, Pencil, Trash2, Loader2, Globe, Wifi } from "lucide-react";
 import { format } from "date-fns";
 import { zhCN } from "date-fns/locale";
 import type { Environment } from "@/types";
+import { usePermission } from "@/hooks/usePermission";
 
 interface VariableRow {
   key: string;
@@ -34,6 +35,7 @@ export function EnvironmentsPage() {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingEnv, setEditingEnv] = useState<Environment | null>(null);
   const [deleteId, setDeleteId] = useState<string | null>(null);
+  const { canEdit } = usePermission();
 
   const [formData, setFormData] = useState({
     name: "", description: "", base_url: "", ws_url: "",
@@ -137,10 +139,12 @@ export function EnvironmentsPage() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold">环境管理</h1>
+        {canEdit && (
         <Button onClick={openCreate} className="gap-2">
           <Plus className="h-4 w-4" />
           新建环境
         </Button>
+        )}
       </div>
 
       {/* Loading / Error */}
@@ -200,16 +204,20 @@ export function EnvironmentsPage() {
                     </div>
                   </div>
                   <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                    <Button variant="ghost" size="icon" onClick={() => openEdit(env)}>
-                      <Pencil className="h-4 w-4" />
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      onClick={() => setDeleteId(env.id)}
-                    >
-                      <Trash2 className="h-4 w-4 text-destructive" />
-                    </Button>
+                    {canEdit && (
+                      <>
+                        <Button variant="ghost" size="icon" onClick={() => openEdit(env)}>
+                          <Pencil className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => setDeleteId(env.id)}
+                        >
+                          <Trash2 className="h-4 w-4 text-destructive" />
+                        </Button>
+                      </>
+                    )}
                   </div>
                 </div>
 

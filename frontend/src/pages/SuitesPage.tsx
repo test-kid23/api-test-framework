@@ -27,10 +27,12 @@ import { useCases } from "@/hooks/useCases";
 import { executionsApi } from "@/api/executions";
 import { toast } from "sonner";
 import type { Suite, SuiteCreate } from "@/types";
+import { usePermission } from "@/hooks/usePermission";
 
 export function SuitesPage() {
   const navigate = useNavigate();
   const [search, setSearch] = useState("");
+  const { canEdit } = usePermission();
   const { data, isLoading } = useSuites({ page: 1, page_size: 100, search: search || undefined });
   const { data: casesData } = useCases({ page: 1, page_size: 200 });
   const createSuite = useCreateSuite();
@@ -126,9 +128,11 @@ export function SuitesPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold">套件管理</h1>
+        {canEdit && (
         <Button onClick={openCreate}>
           <Plus className="mr-2 h-4 w-4" />新建套件
         </Button>
+        )}
       </div>
 
       {/* Search */}
@@ -182,7 +186,7 @@ export function SuitesPage() {
               action={
                 search
                   ? { label: "清除搜索", onClick: () => setSearch("") }
-                  : { label: "新建套件", onClick: openCreate }
+                  : canEdit ? { label: "新建套件", onClick: openCreate } : undefined
               }
             />
           </CardContent>
@@ -217,30 +221,38 @@ export function SuitesPage() {
                 </div>
               </CardContent>
               <CardFooter className="flex items-center gap-2 pt-0">
-                <Button
-                  variant="default"
-                  size="sm"
-                  className="flex-1"
-                  onClick={() => handleTrigger(suite.id)}
-                  disabled={triggeringId === suite.id}
-                >
-                  {triggeringId === suite.id ? (
-                    <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" />
-                  ) : (
-                    <Play className="mr-1 h-3.5 w-3.5" />
-                  )}
-                  触发执行
-                </Button>
-                <Button variant="outline" size="sm" onClick={() => openEdit(suite)}>
-                  <Pencil className="h-3.5 w-3.5" />
-                </Button>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setDeleteTarget(suite)}
-                >
-                  <Trash2 className="h-3.5 w-3.5 text-destructive" />
-                </Button>
+                {canEdit ? (
+                  <>
+                    <Button
+                      variant="default"
+                      size="sm"
+                      className="flex-1"
+                      onClick={() => handleTrigger(suite.id)}
+                      disabled={triggeringId === suite.id}
+                    >
+                      {triggeringId === suite.id ? (
+                        <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" />
+                      ) : (
+                        <Play className="mr-1 h-3.5 w-3.5" />
+                      )}
+                      触发执行
+                    </Button>
+                    <Button variant="outline" size="sm" onClick={() => openEdit(suite)}>
+                      <Pencil className="h-3.5 w-3.5" />
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setDeleteTarget(suite)}
+                    >
+                      <Trash2 className="h-3.5 w-3.5 text-destructive" />
+                    </Button>
+                  </>
+                ) : (
+                  <span className="text-sm text-muted-foreground">
+                    {(suite.case_ids?.length ?? 0)} 个用例
+                  </span>
+                )}
               </CardFooter>
             </Card>
           ))}

@@ -21,6 +21,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from api.auth import CurrentUser, get_current_user
 from api.dependencies import get_db_session
 from api.schemas.common import (
     PaginatedResponse,
@@ -67,6 +68,7 @@ async def list_reports(
     page_size: int = Query(default=20, ge=1, le=100),
     env: Optional[str] = Query(default=None, description="按环境过滤"),
     session: AsyncSession = Depends(get_db_session),
+    current_user: CurrentUser = Depends(get_current_user),
 ):
     """分页查询报告列表，可按环境过滤。
 
@@ -81,11 +83,22 @@ async def list_reports(
         ReportModel.created_at,
         ExecutionModel.status,
         ExecutionModel.env,
+        ExecutionModel.project_id,
     ]
     stmt = (
         select(*cols)
         .join(ExecutionModel, ReportModel.execution_id == ExecutionModel.id)
     )
+
+    # 项目隔离：非 admin 用户只能看自己项目的报告
+    if not current_user.is_admin():
+        if current_user.project_ids:
+            stmt = stmt.where(
+                ExecutionModel.project_id.in_([uuid.UUID(pid) for pid in current_user.project_ids])
+                | ExecutionModel.project_id.is_(None)
+            )
+        else:
+            stmt = stmt.where(ExecutionModel.project_id.is_(None))
 
     if env:
         stmt = stmt.where(ExecutionModel.env == env)
@@ -146,6 +159,7 @@ async def get_trends(
         description="按套件 ID 过滤（UUID 格式）",
     ),
     session: AsyncSession = Depends(get_db_session),
+    current_user: CurrentUser = Depends(get_current_user),
 ):
     """查询指定时间范围内每日的通过率与平均响应时间趋势。
 
@@ -194,6 +208,7 @@ async def get_top_failures(
         description="按套件 ID 过滤（UUID 格式）",
     ),
     session: AsyncSession = Depends(get_db_session),
+    current_user: CurrentUser = Depends(get_current_user),
 ):
     """查询失败次数最多的 Top N 用例。
 

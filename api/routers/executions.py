@@ -30,6 +30,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from api.auth import CurrentUser, check_project_access, get_current_user, require_role
 from api.dependencies import create_independent_session, create_runner, get_db_session, parse_yaml_case
 from api.schemas.common import (
     PaginatedResponse,
@@ -168,6 +169,7 @@ def _get_execution_mode(env_name: str) -> str:
 async def trigger_execution(
     body: ExecutionRequest,
     session: AsyncSession = Depends(get_db_session),
+    current_user: CurrentUser = Depends(require_role("admin", "editor")),
 ):
     """提交用例执行任务。
 
@@ -218,6 +220,8 @@ async def trigger_execution(
         trigger=body.trigger.value,
         env=body.env,
     )
+    if current_user.primary_project_id:
+        exec_model.project_id = uuid.UUID(current_user.primary_project_id)
     session.add(exec_model)
     await session.commit()
 
@@ -515,6 +519,7 @@ async def _execute_cases_in_background(
 async def cancel_execution(
     execution_id: str,
     session: AsyncSession = Depends(get_db_session),
+    current_user: CurrentUser = Depends(require_role("admin", "editor")),
 ):
     """取消正在运行的分布式执行任务。
 
@@ -530,6 +535,8 @@ async def cancel_execution(
     exec_model = await exec_repo.get(uid)
     if exec_model is None:
         raise HTTPException(status_code=404, detail="执行记录不存在")
+
+    check_project_access(str(exec_model.project_id) if exec_model.project_id else None, current_user, "执行记录")
 
     if not exec_model.celery_task_id:
         raise HTTPException(
@@ -576,14 +583,27 @@ async def list_executions(
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=20, ge=1, le=100),
     session: AsyncSession = Depends(get_db_session),
+    current_user: CurrentUser = Depends(get_current_user),
 ):
     """查询执行历史记录（分页，按创建时间倒序）。"""
-    count_stmt = select(func.count(ExecutionModel.id))
+    stmt = select(ExecutionModel)
+
+    # 项目隔离：非 admin 用户只能看自己项目的执行
+    if not current_user.is_admin():
+        if current_user.project_ids:
+            stmt = stmt.where(
+                ExecutionModel.project_id.in_([uuid.UUID(pid) for pid in current_user.project_ids])
+                | ExecutionModel.project_id.is_(None)
+            )
+        else:
+            stmt = stmt.where(ExecutionModel.project_id.is_(None))
+
+    count_stmt = select(func.count()).select_from(stmt.subquery())
     total = (await session.execute(count_stmt)).scalar_one()
 
     offset = (page - 1) * page_size
     stmt = (
-        select(ExecutionModel)
+        stmt
         .order_by(ExecutionModel.created_at.desc())
         .offset(offset)
         .limit(page_size)
@@ -613,6 +633,7 @@ async def list_executions(
 async def get_execution(
     execution_id: str,
     session: AsyncSession = Depends(get_db_session),
+    current_user: CurrentUser = Depends(get_current_user),
 ):
     """根据 ID 获取单次执行的详细结果。"""
     try:
@@ -624,6 +645,8 @@ async def get_execution(
     exec_model = await exec_repo.get_with_results(uid)
     if exec_model is None:
         raise HTTPException(status_code=404, detail="执行记录不存在")
+
+    check_project_access(str(exec_model.project_id) if exec_model.project_id else None, current_user, "执行记录")
 
     results = exec_model.results or []
     case_results = _result_models_to_case_results(list(results))
@@ -662,6 +685,7 @@ async def get_execution(
 async def get_execution_status(
     execution_id: str,
     session: AsyncSession = Depends(get_db_session),
+    current_user: CurrentUser = Depends(get_current_user),
 ):
     """查询分布式执行的实时任务状态。
 
@@ -684,6 +708,8 @@ async def get_execution_status(
     exec_model = await exec_repo.get(uid)
     if exec_model is None:
         raise HTTPException(status_code=404, detail="执行记录不存在")
+
+    check_project_access(str(exec_model.project_id) if exec_model.project_id else None, current_user, "执行记录")
 
     is_distributed = exec_model.celery_task_id is not None
     celery_status: str | None = None
@@ -725,6 +751,7 @@ async def get_execution_status(
 async def get_execution_report(
     execution_id: str,
     session: AsyncSession = Depends(get_db_session),
+    current_user: CurrentUser = Depends(get_current_user),
 ):
     """获取指定执行的详细报告，包含通过率、耗时统计等聚合信息。"""
     try:
@@ -736,6 +763,8 @@ async def get_execution_report(
     exec_model = await exec_repo.get_with_results(uid)
     if exec_model is None:
         raise HTTPException(status_code=404, detail="执行记录不存在")
+
+    check_project_access(str(exec_model.project_id) if exec_model.project_id else None, current_user, "执行记录")
 
     results = exec_model.results or []
     case_results = _result_models_to_case_results(list(results))

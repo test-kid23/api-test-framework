@@ -16,11 +16,13 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { TagInput } from "@/components/ui/tag-input";
 import { toast } from "sonner";
 import { ArrowLeft, Loader2, Save, Code2, Check, Eye } from "lucide-react";
+import { usePermission } from "@/hooks/usePermission";
 
 export function CaseEditPage() {
   const navigate = useNavigate();
   const { id } = useParams<{ id: string }>();
   const isEdit = !!id;
+  const { canEdit } = usePermission();
 
   const { data: existingCase, isLoading } = useCase(id);
   const { data: suitesData } = useSuites({ page_size: 100 });
@@ -221,13 +223,15 @@ export function CaseEditPage() {
 
             {/* Action buttons */}
             <div className="flex gap-3">
-              <Button type="submit" disabled={createCase.isPending || updateCase.isPending}>
-                {(createCase.isPending || updateCase.isPending) && (
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                )}
-                <Save className="mr-2 h-4 w-4" />
-                保存
-              </Button>
+              {canEdit && (
+                <Button type="submit" disabled={createCase.isPending || updateCase.isPending}>
+                  {(createCase.isPending || updateCase.isPending) && (
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  )}
+                  <Save className="mr-2 h-4 w-4" />
+                  保存
+                </Button>
+              )}
               <Button
                 type="button"
                 variant="outline"

@@ -317,11 +317,10 @@ async def get_db_session() -> AsyncGenerator[AsyncSession, None]:
     async with _session_factory() as session:
         try:
             yield session
+            await session.commit()
         except Exception:  # 必须捕获任意异常以执行回滚（FastAPI 依赖安全模式）
             await session.rollback()
             raise
-        finally:
-            await session.close()
 
 
 def create_independent_session() -> AsyncSession:

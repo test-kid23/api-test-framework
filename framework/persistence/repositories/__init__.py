@@ -10,6 +10,7 @@ from framework.persistence.repositories.execution_repo import (
 from framework.persistence.repositories.report_repo import ReportRepository
 from framework.persistence.repositories.schedule_repo import ScheduleRepository
 from framework.persistence.repositories.suite_repo import SuiteRepository
+from framework.persistence.repositories.user_repo import ProjectRepository, UserRepository
 
 __all__ = [
     "BaseRepository",
@@ -17,7 +18,9 @@ __all__ = [
     "EnvironmentRepository",
     "ExecutionRepository",
     "ExecutionResultRepository",
+    "ProjectRepository",
     "ReportRepository",
     "ScheduleRepository",
     "SuiteRepository",
+    "UserRepository",
 ]

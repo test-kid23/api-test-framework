@@ -290,3 +290,221 @@ export interface EnvironmentUpdate {
   variables?: Record<string, string> | null;
   http_config?: Record<string, unknown> | null;
 }
+
+// ── Mock ──────────────────────────────────────────────────────
+
+export interface MockRule {
+  id: string;
+  url_pattern: string;
+  method: string;
+  status_code: number;
+  response_body: unknown;
+  response_headers: Record<string, string>;
+  description: string;
+  enabled: boolean;
+  priority: number;
+  delay_ms: number;
+}
+
+export interface MockRuleCreate {
+  url_pattern: string;
+  method?: string;
+  status_code?: number;
+  response_body?: unknown;
+  response_headers?: Record<string, string>;
+  description?: string;
+  priority?: number;
+  delay_ms?: number;
+}
+
+export interface MockRuleUpdate {
+  url_pattern?: string;
+  method?: string;
+  status_code?: number;
+  response_body?: unknown;
+  response_headers?: Record<string, string>;
+  description?: string;
+  enabled?: boolean;
+  priority?: number;
+  delay_ms?: number;
+}
+
+export interface MockRulesList {
+  total: number;
+  rules: MockRule[];
+}
+
+export interface MockBatchCreate {
+  rules: MockRuleCreate[];
+}
+
+// ── Recorder ──────────────────────────────────────────────────
+
+export type RecorderState = "idle" | "recording" | "paused";
+
+export interface RecordingSession {
+  session_id: string;
+  name: string;
+  state: RecorderState;
+  started_at: string;
+  stopped_at: string;
+  entry_count: number;
+  har_file: string;
+  duration_seconds: number;
+  metadata: Record<string, unknown>;
+}
+
+export interface RecorderStatus {
+  state: RecorderState;
+  is_recording: boolean;
+  current_session: RecordingSession | null;
+  total_entries: number;
+}
+
+export interface StartRecordingRequest {
+  session_name?: string;
+  metadata?: Record<string, unknown>;
+  save_dir?: string | null;
+}
+
+export interface ReplayRequest {
+  har_file: string;
+  filter_url?: string | null;
+  filter_method?: string | null;
+  max_entries?: number | null;
+  base_url?: string;
+  ignore_headers?: string[];
+  ignore_body_keys?: string[];
+  strict_mode?: boolean;
+}
+
+export interface DiffItem {
+  path: string;
+  severity: "info" | "warning" | "error";
+  recorded: unknown;
+  actual: unknown;
+  message: string;
+}
+
+export interface DiffReport {
+  entry_index: number;
+  url: string;
+  method: string;
+  matched: boolean;
+  diffs: DiffItem[];
+  diff_count: number;
+  error_count: number;
+  summary: string;
+}
+
+export interface PlaybackResult {
+  entry_index: number;
+  method: string;
+  url: string;
+  recorded_status: number;
+  actual_status: number;
+  recorded_elapsed_ms: number;
+  actual_elapsed_ms: number;
+  matched: boolean;
+  diff_report: DiffReport | null;
+  error: string;
+}
+
+export interface PlaybackReport {
+  har_file: string;
+  total_entries: number;
+  matched_count: number;
+  failed_count: number;
+  error_count: number;
+  pass_rate: number;
+  results: PlaybackResult[];
+  duration_seconds: number;
+  summary: string;
+}
+
+export interface GenerateRequest {
+  har_file: string;
+  output_dir?: string;
+  suite_name?: string;
+  auto_assert?: boolean;
+  assert_status?: boolean;
+  max_assert_fields?: number;
+  strict_assert?: boolean;
+  priority?: string;
+  tags?: string[];
+}
+
+export interface GenerateResult {
+  output_file: string;
+  case_count: number;
+  skipped_entries: number;
+  errors: string[];
+}
+
+// ── Smart Assertion ──────────────────────────────────────────
+
+export interface FieldSchemaInfo {
+  path: string;
+  types: string[];
+  dominant_type: string;
+  required: boolean;
+  occurrence_rate: number;
+  null_rate: number;
+  sample_count: number;
+  sample_values: unknown[];
+  value_pattern: string | null;
+  min_value: number | null;
+  max_value: number | null;
+  min_length: number | null;
+  max_length: number | null;
+  distinct_count: number;
+  warnings: string[];
+}
+
+export interface InferredSchemaInfo {
+  case_id: string | null;
+  case_name: string;
+  fields: Record<string, FieldSchemaInfo>;
+  sample_count: number;
+  response_count: number;
+  generated_at: string;
+  top_level_type: string;
+}
+
+export interface AssertionItemInfo {
+  path: string;
+  expected: unknown;
+  operator: string;
+  message: string;
+}
+
+export interface SmartAssertionResponse {
+  case_id: string | null;
+  case_name: string;
+  schema: InferredSchemaInfo | null;
+  assertions: AssertionItemInfo[];
+  sample_count: number;
+}
+
+export interface StructureChangeInfo {
+  path: string;
+  change_type: string;
+  severity: string;
+  expected: unknown;
+  actual: unknown;
+  message: string;
+}
+
+export interface ChangeDetectionResponse {
+  case_id: string | null;
+  case_name: string;
+  changes: StructureChangeInfo[];
+  has_warnings: boolean;
+  has_errors: boolean;
+  summary: string;
+}
+
+export interface SmartAssertionSuccessResponse<T> {
+  success: boolean;
+  data: T;
+}

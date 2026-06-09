@@ -20,6 +20,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from api.auth import CurrentUser, check_project_access, get_current_user, require_role
 from api.dependencies import get_db_session
 from api.schemas.case import (
     CaseCreateRequest,
@@ -125,6 +126,7 @@ def _not_found(case_id: str) -> HTTPException:
 async def create_case(
     body: CaseCreateRequest,
     session: AsyncSession = Depends(get_db_session),
+    current_user: CurrentUser = Depends(require_role("admin", "editor")),
 ):
     """创建新的测试用例，将 YAML 内容持久化到数据库中。"""
     repo = CaseRepository(session)
@@ -135,6 +137,9 @@ async def create_case(
         priority=body.priority,
         yaml_content=body.yaml_content,
     )
+    # 绑定到用户的第一个项目（如有关联）
+    if current_user.primary_project_id:
+        model.project_id = uuid.UUID(current_user.primary_project_id)
     created = await repo.create(model)
     await session.commit()
     return SuccessResponse(data=_orm_to_response(created))
@@ -151,9 +156,20 @@ async def create_case(
 async def list_cases(
     params: CaseQueryParams = Depends(),
     session: AsyncSession = Depends(get_db_session),
+    current_user: CurrentUser = Depends(get_current_user),
 ):
     """分页查询用例列表，支持按标签、优先级过滤和关键词搜索。"""
     stmt = select(TestCaseModel)
+
+    # 项目隔离：非 admin 用户只能看自己项目的用例
+    if not current_user.is_admin() and current_user.project_ids:
+        stmt = stmt.where(
+            (TestCaseModel.project_id.in_([uuid.UUID(pid) for pid in current_user.project_ids]))
+            | (TestCaseModel.project_id.is_(None))
+        )
+    elif not current_user.is_admin():
+        # 无项目的用户只能看全局资源
+        stmt = stmt.where(TestCaseModel.project_id.is_(None))
 
     # 标签过滤：tags 字段在 DB 中为 JSON 字符串，使用 contains 匹配
     if params.tag:
@@ -208,6 +224,7 @@ async def list_cases(
 async def get_case(
     case_id: str,
     session: AsyncSession = Depends(get_db_session),
+    current_user: CurrentUser = Depends(get_current_user),
 ):
     """根据 ID 获取单个用例详情，包含完整 YAML 内容。"""
     try:
@@ -219,6 +236,7 @@ async def get_case(
     model = await repo.get(uid)
     if model is None:
         raise _not_found(case_id)
+    check_project_access(str(model.project_id) if model.project_id else None, current_user, "用例")
     return SuccessResponse(data=_orm_to_response(model))
 
 
@@ -238,6 +256,7 @@ async def update_case(
     case_id: str,
     body: CaseUpdateRequest,
     session: AsyncSession = Depends(get_db_session),
+    current_user: CurrentUser = Depends(require_role("admin", "editor")),
 ):
     """更新用例信息。仅更新传入的非 None 字段，版本号自动递增。"""
     update_data = body.model_dump(exclude_unset=True)
@@ -265,6 +284,8 @@ async def update_case(
     model = await repo.get(uid)
     if model is None:
         raise _not_found(case_id)
+
+    check_project_access(str(model.project_id) if model.project_id else None, current_user, "用例")
 
     # 更新字段（仅更新传入的非 None 值）
     if body.name is not None:
@@ -303,6 +324,7 @@ async def update_case(
 async def delete_case(
     case_id: str,
     session: AsyncSession = Depends(get_db_session),
+    current_user: CurrentUser = Depends(require_role("admin", "editor")),
 ):
     """删除指定用例。"""
     try:
@@ -311,6 +333,12 @@ async def delete_case(
         raise _not_found(case_id)
 
     repo = CaseRepository(session)
+    model = await repo.get(uid)
+    if model is None:
+        raise _not_found(case_id)
+
+    check_project_access(str(model.project_id) if model.project_id else None, current_user, "用例")
+
     deleted = await repo.delete_by_id(uid)
     if not deleted:
         raise _not_found(case_id)
@@ -334,6 +362,7 @@ async def delete_case(
 async def list_case_versions(
     case_id: str,
     session: AsyncSession = Depends(get_db_session),
+    current_user: CurrentUser = Depends(get_current_user),
 ):
     """获取用例的版本信息（当前 DB 中仅保留最新版本）。"""
     try:
@@ -345,6 +374,8 @@ async def list_case_versions(
     model = await repo.get(uid)
     if model is None:
         raise _not_found(case_id)
+
+    check_project_access(str(model.project_id) if model.project_id else None, current_user, "用例")
 
     # DB 中无版本历史表，返回当前记录作为唯一版本
     return SuccessResponse(data=[_orm_to_response(model)])
@@ -366,6 +397,7 @@ async def list_case_versions(
 async def import_cases(
     body: CaseImportRequest,
     session: AsyncSession = Depends(get_db_session),
+    current_user: CurrentUser = Depends(require_role("admin", "editor")),
 ):
     """从 OpenAPI 3.x / Swagger 规范 URL 或本地文件导入测试用例。
 
@@ -405,6 +437,8 @@ async def import_cases(
     imported_ids: list[str] = []
     errors: list[str] = []
 
+    project_id = uuid.UUID(current_user.primary_project_id) if current_user.primary_project_id else None
+
     for case in suite.cases:
         try:
             yaml_content = testcase_to_yaml_content(case)
@@ -415,6 +449,7 @@ async def import_cases(
                 priority=case.priority,
                 yaml_content=yaml_content,
                 suite_name=suite.name,
+                project_id=project_id,
             )
             created = await repo.create(model)
             imported_ids.append(str(created.id))

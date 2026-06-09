@@ -50,3 +50,6 @@ apscheduler>=3.10.0
 safety==3.8.1
 bandit==1.9.4
 watchdog==6.0.0
+# ── Auth (JWT + Password Hashing) ──
+PyJWT>=2.8.0,<3.0
+bcrypt>=4.0.0,<5.0

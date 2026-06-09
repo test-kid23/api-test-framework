@@ -18,8 +18,10 @@ from typing import Any, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel, Field
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from api.auth import CurrentUser, check_project_access, get_current_user, require_role
 from api.dependencies import get_db_session
 from api.schemas.common import (
     MessageResponse,
@@ -113,6 +115,7 @@ def _orm_to_list_item(model: TestSuiteModel) -> SuiteListItem:
 async def create_suite(
     body: SuiteCreateRequest,
     session: AsyncSession = Depends(get_db_session),
+    current_user: CurrentUser = Depends(require_role("admin", "editor")),
 ):
     repo = SuiteRepository(session)
     model = TestSuiteModel(
@@ -120,6 +123,8 @@ async def create_suite(
         description=body.description,
         config=json.dumps(body.config, ensure_ascii=False) if body.config else None,
     )
+    if current_user.primary_project_id:
+        model.project_id = uuid.UUID(current_user.primary_project_id)
     created = await repo.create(model)
     await session.commit()
     return SuccessResponse(data=_orm_to_response(created))
@@ -137,14 +142,28 @@ async def list_suites(
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=20, ge=1, le=100),
     session: AsyncSession = Depends(get_db_session),
+    current_user: CurrentUser = Depends(get_current_user),
 ):
-    repo = SuiteRepository(session)
+    stmt = select(TestSuiteModel)
+
+    # 项目隔离：非 admin 用户只能看自己项目的套件
+    if not current_user.is_admin():
+        if current_user.project_ids:
+            stmt = stmt.where(
+                TestSuiteModel.project_id.in_([uuid.UUID(pid) for pid in current_user.project_ids])
+                | TestSuiteModel.project_id.is_(None)
+            )
+        else:
+            stmt = stmt.where(TestSuiteModel.project_id.is_(None))
+
+    count_stmt = select(func.count()).select_from(stmt.subquery())
+    total = (await session.execute(count_stmt)).scalar_one()
+
     offset = (page - 1) * page_size
-    items, total = await repo.list(
-        offset=offset,
-        limit=page_size,
-        order_by=TestSuiteModel.updated_at.desc(),
-    )
+    stmt = stmt.order_by(TestSuiteModel.updated_at.desc()).offset(offset).limit(page_size)
+    result = await session.execute(stmt)
+    items = result.scalars().all()
+
     list_items = [_orm_to_list_item(m) for m in items]
     meta = PaginationMeta(
         page=page,
@@ -166,6 +185,7 @@ async def list_suites(
 async def get_suite(
     suite_id: str,
     session: AsyncSession = Depends(get_db_session),
+    current_user: CurrentUser = Depends(get_current_user),
 ):
     try:
         uid = uuid.UUID(suite_id)
@@ -176,6 +196,7 @@ async def get_suite(
     model = await repo.get(uid)
     if model is None:
         raise HTTPException(status_code=404, detail="套件不存在")
+    check_project_access(str(model.project_id) if model.project_id else None, current_user, "套件")
     return SuccessResponse(data=_orm_to_response(model))
 
 
@@ -191,6 +212,7 @@ async def update_suite(
     suite_id: str,
     body: SuiteUpdateRequest,
     session: AsyncSession = Depends(get_db_session),
+    current_user: CurrentUser = Depends(require_role("admin", "editor")),
 ):
     update_data = body.model_dump(exclude_unset=True)
     if not update_data:
@@ -205,6 +227,8 @@ async def update_suite(
     model = await repo.get(uid)
     if model is None:
         raise HTTPException(status_code=404, detail="套件不存在")
+
+    check_project_access(str(model.project_id) if model.project_id else None, current_user, "套件")
 
     if body.name is not None:
         model.name = body.name
@@ -231,6 +255,7 @@ async def update_suite(
 async def delete_suite(
     suite_id: str,
     session: AsyncSession = Depends(get_db_session),
+    current_user: CurrentUser = Depends(require_role("admin", "editor")),
 ):
     try:
         uid = uuid.UUID(suite_id)
@@ -238,9 +263,12 @@ async def delete_suite(
         raise HTTPException(status_code=404, detail="套件不存在")
 
     repo = SuiteRepository(session)
-    deleted = await repo.delete_by_id(uid)
-    if not deleted:
+    model = await repo.get(uid)
+    if model is None:
         raise HTTPException(status_code=404, detail="套件不存在")
 
+    check_project_access(str(model.project_id) if model.project_id else None, current_user, "套件")
+
+    deleted = await repo.delete_by_id(uid)
     await session.commit()
     return MessageResponse(message=f"套件 {suite_id} 已删除")

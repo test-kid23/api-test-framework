@@ -3,7 +3,6 @@ import { create } from "zustand";
 type Theme = "light" | "dark" | "system";
 
 interface AppState {
-  currentUser: { name: string; role: string };
   selectedEnv: string;
   sidebarOpen: boolean;
   theme: Theme;
@@ -35,10 +34,6 @@ function applyTheme(theme: Theme) {
 applyTheme(getInitialTheme());
 
 export const useAppStore = create<AppState>((set) => ({
-  currentUser: {
-    name: "管理员",
-    role: "admin",
-  },
   selectedEnv: "dev",
   sidebarOpen: true,
   theme: getInitialTheme(),

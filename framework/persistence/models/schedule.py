@@ -82,6 +82,13 @@ class ScheduleModel(Base):
         nullable=True,
         comment="下次执行时间",
     )
+    project_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("projects.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+        comment="所属项目 ID（多租户隔离）",
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         server_default=func.now(),

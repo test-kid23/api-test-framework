@@ -440,3 +440,44 @@ class NotificationConfigError(NotificationError):
         super().__init__(message, trace_id=trace_id)
         self.channel = channel
         self.field = field
+
+
+# ==================== 认证异常 ====================
+
+
+class AuthenticationError(AutoTestException):
+    """认证失败异常
+
+    当 JWT token 无效、过期或缺失时抛出。
+
+    Attributes:
+        detail: 认证失败的具体原因。
+    """
+
+    def __init__(self, detail: str = "", *, trace_id: str = "") -> None:
+        msg = f"认证失败: {detail}" if detail else "认证失败"
+        super().__init__(msg, trace_id=trace_id)
+        self.detail = detail
+
+
+class AuthorizationError(AutoTestException):
+    """授权失败异常
+
+    当用户角色无权访问资源时抛出。
+
+    Attributes:
+        required_role: 所需的最低角色。
+        actual_role: 用户当前角色。
+    """
+
+    def __init__(
+        self,
+        required_role: str = "",
+        actual_role: str = "",
+        *,
+        trace_id: str = "",
+    ) -> None:
+        msg = f"权限不足: 需要 '{required_role}' 角色, 当前为 '{actual_role}'"
+        super().__init__(msg, trace_id=trace_id)
+        self.required_role = required_role
+        self.actual_role = actual_role

@@ -29,6 +29,7 @@ import { Plus, Search, Pencil, Trash2, Loader2, Upload, XSquare, FileText } from
 import { format } from "date-fns";
 import { zhCN } from "date-fns/locale";
 import type { TestCase, CasePriority } from "@/types";
+import { usePermission } from "@/hooks/usePermission";
 
 const PRIORITIES: CasePriority[] = ["P0", "P1", "P2", "P3"];
 const priorityColors: Record<CasePriority, "destructive" | "default" | "secondary" | "outline"> = {
@@ -38,6 +39,7 @@ const priorityColors: Record<CasePriority, "destructive" | "default" | "secondar
 export function CasesPage() {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
+  const { canEdit } = usePermission();
 
   const page = Number(searchParams.get("page") || "1");
   const search = searchParams.get("search") || "";
@@ -168,6 +170,7 @@ export function CasesPage() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold">用例管理</h1>
+        {canEdit && (
         <div className="flex items-center gap-2">
           <Button
             variant="outline"
@@ -182,6 +185,7 @@ export function CasesPage() {
             新建用例
           </Button>
         </div>
+        )}
       </div>
 
       {/* Search + Priority Tabs */}
@@ -219,7 +223,7 @@ export function CasesPage() {
       </div>
 
       {/* Batch actions bar */}
-      {selectedIds.size > 0 && (
+      {canEdit && selectedIds.size > 0 && (
         <div className="flex items-center gap-3 rounded-lg border bg-muted/30 px-4 py-2">
           <span className="text-sm font-medium">
             已选 {selectedIds.size} 项
@@ -356,20 +360,24 @@ export function CasesPage() {
                       </TableCell>
                       <TableCell onClick={(e) => e.stopPropagation()}>
                         <div className="flex gap-1">
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            onClick={() => navigate(`/cases/${c.id}/edit`)}
-                          >
-                            <Pencil className="h-4 w-4" />
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            onClick={() => setDeleteId(c.id)}
-                          >
-                            <Trash2 className="h-4 w-4 text-destructive" />
-                          </Button>
+                          {canEdit && (
+                            <>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                onClick={() => navigate(`/cases/${c.id}/edit`)}
+                              >
+                                <Pencil className="h-4 w-4" />
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                onClick={() => setDeleteId(c.id)}
+                              >
+                                <Trash2 className="h-4 w-4 text-destructive" />
+                              </Button>
+                            </>
+                          )}
                         </div>
                       </TableCell>
                     </TableRow>
@@ -422,7 +430,7 @@ export function CasesPage() {
                 icon={FileText}
                 title="暂无用例数据"
                 description="点击「新建用例」或「从 OpenAPI 导入」开始创建你的第一个测试用例"
-                action={{ label: "新建用例", onClick: () => navigate("/cases/new") }}
+                action={canEdit ? { label: "新建用例", onClick: () => navigate("/cases/new") } : undefined}
               />
             </div>
           )}

@@ -39,6 +39,9 @@ dependencies = [
     "typer>=0.15.0",
     # ── Utilities ──
     "colorama>=0.4.6",
+    # ── Auth ──
+    "PyJWT>=2.8.0",
+    "passlib[bcrypt]>=1.7.4",
 ]
 
 [project.optional-dependencies]

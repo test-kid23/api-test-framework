@@ -10,14 +10,18 @@ from framework.persistence.models.report import ReportModel
 from framework.persistence.models.schedule import ScheduleModel
 from framework.persistence.models.test_case import TestCaseModel
 from framework.persistence.models.test_suite import TestSuiteModel
+from framework.persistence.models.user import ProjectModel, UserModel, UserProjectModel
 
 __all__ = [
     "Base",
     "EnvironmentModel",
     "ExecutionModel",
     "ExecutionResultModel",
+    "ProjectModel",
     "ReportModel",
     "ScheduleModel",
     "TestCaseModel",
     "TestSuiteModel",
+    "UserModel",
+    "UserProjectModel",
 ]

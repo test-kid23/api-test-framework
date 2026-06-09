@@ -1,0 +1,109 @@
+# Mock 测试示例 — 使用内嵌 Mock 服务器
+# 前提：Mock 服务器已随 API 启动（自动挂载到 /_mock 路径）
+name: Mock 服务器测试示例
+description: 使用内嵌 Mock 服务验证被测行为
+base_url: "http://localhost:8000/_mock"  # 指向内嵌 Mock 服务器
+tags: [mock, smoke, P1]
+
+variables:
+  mock_user_name: "mock_user_001"
+
+setup:
+  # 使用 mock_setup fixture 动态注册 Mock 规则
+  # 规则会在套件执行前注册，teardown 时自动清理
+  - mock_setup:
+      rules:
+        - url_pattern: "/api/users/*"
+          method: POST
+          status_code: 201
+          response_body:
+            id: 1
+            name: "{{mock_user_name}}"
+            email: "mock@example.com"
+            created_at: "2025-01-01T00:00:00Z"
+
+        - url_pattern: "/api/users/999"
+          method: GET
+          status_code: 404
+          response_body:
+            error: "User not found"
+            code: 404
+
+        - url_pattern: "/api/users/*"
+          method: GET
+          status_code: 200
+          response_body:
+            id: 1
+            name: "{{mock_user_name}}"
+            email: "mock@example.com"
+
+        - url_pattern: "/api/health"
+          method: ANY
+          status_code: 200
+          response_body:
+            status: "ok"
+            version: "mock-1.0"
+
+cases:
+  - name: 创建用户（Mock）
+    description: 通过 Mock 验证 POST 创建用户接口
+    tags: [mock, post]
+    priority: P0
+    request:
+      method: POST
+      path: /api/users
+      headers:
+        Content-Type: application/json
+      body:
+        name: "{{mock_user_name}}"
+        email: "test@example.com"
+    expect:
+      status_code: 201
+      jsonpath:
+        $.id: 1
+        $.name: "{{mock_user_name}}"
+        $.email: "mock@example.com"
+    extract:
+      created_user_id: $.id
+
+  - name: 查询用户（Mock）
+    description: 通过 Mock 验证 GET 查询用户接口
+    tags: [mock, get]
+    priority: P0
+    request:
+      method: GET
+      path: "/api/users/{{created_user_id}}"
+    expect:
+      status_code: 200
+      jsonpath:
+        $.id: 1
+        $.name: "{{mock_user_name}}"
+
+  - name: 查询不存在的用户（Mock）
+    description: 验证 Mock 返回 404 场景
+    tags: [mock, error]
+    priority: P1
+    request:
+      method: GET
+      path: /api/users/999
+    expect:
+      status_code: 404
+      jsonpath:
+        $.error: "User not found"
+        $.code: 404
+
+  - name: 健康检查（Mock）
+    description: 验证 Mock 健康检查接口
+    tags: [mock, health]
+    priority: P1
+    request:
+      method: GET
+      path: /api/health
+    expect:
+      status_code: 200
+      jsonpath:
+        $.status: "ok"
+
+teardown:
+  # 使用 mock_teardown 清理注册的规则
+  - mock_teardown: {}

@@ -90,3 +90,121 @@ class ExecutionResultRepository(BaseRepository[ExecutionResultModel]):
         self._session.add(record)
         await self._session.flush()
         return record
+
+    async def get_successful_responses_by_case_id(
+        self,
+        case_id: uuid.UUID,
+        limit: int = 50,
+    ) -> list[dict[str, object]]:
+        """查询指定用例最近 N 次执行成功的响应体列表（用于智能断言）。
+
+        Args:
+            case_id: 用例 UUID。
+            limit: 最多返回的响应数量。
+
+        Returns:
+            响应体 dict 列表（JSON 解析后的 body 部分）。
+        """
+        from sqlalchemy import desc
+
+        stmt = (
+            select(ExecutionResultModel)
+            .where(
+                ExecutionResultModel.case_id == case_id,
+                ExecutionResultModel.passed == True,  # noqa: E712
+                ExecutionResultModel.response.isnot(None),
+            )
+            .order_by(desc(ExecutionResultModel.created_at))
+            .limit(limit)
+        )
+        result = await self._session.execute(stmt)
+        records = result.scalars().all()
+
+        response_bodies: list[dict[str, object]] = []
+        for record in records:
+            if record.response is None:
+                continue
+            try:
+                resp_data: dict[str, object] = json.loads(record.response)
+                body = resp_data.get("body")
+                if isinstance(body, dict):
+                    response_bodies.append(body)
+                elif isinstance(body, list):
+                    # 将 list 类型 body 包装为 {"data": body}
+                    response_bodies.append({"data": body})
+            except (json.JSONDecodeError, TypeError):
+                continue
+
+        return response_bodies
+
+    async def get_recent_responses_by_case_id(
+        self,
+        case_id: uuid.UUID,
+        limit: int = 20,
+    ) -> list[tuple[bool, dict[str, object] | None]]:
+        """查询指定用例最近 N 次执行的响应（含成功和失败）。
+
+        Args:
+            case_id: 用例 UUID。
+            limit: 最多返回的记录数。
+
+        Returns:
+            (passed, response_body_dict) 元组列表，response_body_dict 为 None 表示解析失败。
+        """
+        from sqlalchemy import desc
+
+        stmt = (
+            select(ExecutionResultModel)
+            .where(
+                ExecutionResultModel.case_id == case_id,
+                ExecutionResultModel.response.isnot(None),
+            )
+            .order_by(desc(ExecutionResultModel.created_at))
+            .limit(limit)
+        )
+        result = await self._session.execute(stmt)
+        records = result.scalars().all()
+
+        results: list[tuple[bool, dict[str, object] | None]] = []
+        for record in records:
+            if record.response is None:
+                continue
+            try:
+                resp_data: dict[str, object] = json.loads(record.response)
+                body = resp_data.get("body")
+                if isinstance(body, dict):
+                    results.append((record.passed, body))
+                elif isinstance(body, list):
+                    results.append((record.passed, {"data": body}))
+                else:
+                    results.append((record.passed, None))
+            except (json.JSONDecodeError, TypeError):
+                results.append((record.passed, None))
+
+        return results
+
+    async def count_results_by_case_id(
+        self,
+        case_id: uuid.UUID,
+        passed_only: bool = False,
+    ) -> int:
+        """统计指定用例的执行结果数量。
+
+        Args:
+            case_id: 用例 UUID。
+            passed_only: 是否仅统计通过的结果。
+
+        Returns:
+            结果数量。
+        """
+        from sqlalchemy import func
+
+        stmt = select(func.count()).select_from(ExecutionResultModel).where(
+            ExecutionResultModel.case_id == case_id,
+            ExecutionResultModel.response.isnot(None),
+        )
+        if passed_only:
+            stmt = stmt.where(ExecutionResultModel.passed == True)  # noqa: E712
+
+        result = await self._session.execute(stmt)
+        return result.scalar_one()

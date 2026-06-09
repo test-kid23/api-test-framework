@@ -25,6 +25,7 @@ import { Play, X, ExternalLink, Loader2, RefreshCw } from "lucide-react";
 import { format } from "date-fns";
 import { zhCN } from "date-fns/locale";
 import type { Execution, ExecutionTrigger } from "@/types";
+import { usePermission } from "@/hooks/usePermission";
 
 const triggerLabels: Record<ExecutionTrigger, string> = {
   manual: "手动", scheduled: "定时", webhook: "Webhook", api: "API",
@@ -33,6 +34,7 @@ const triggerLabels: Record<ExecutionTrigger, string> = {
 export function ExecutionsPage() {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
+  const { canEdit } = usePermission();
 
   const page = Number(searchParams.get("page") || "1");
   const statusFilter = searchParams.get("status") || "all";
@@ -94,10 +96,12 @@ export function ExecutionsPage() {
             </span>
           )}
         </div>
+        {canEdit && (
         <Button onClick={() => setTriggerOpen(true)} className="gap-2">
           <Play className="h-4 w-4" />
           触发新执行
         </Button>
+        )}
       </div>
 
       {/* Status Tabs */}

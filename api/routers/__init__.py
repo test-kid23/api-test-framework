@@ -1,5 +1,27 @@
 """API 路由模块"""
 
-from api.routers import cases, environments, executions, reports, schedules, suites
+from api.routers import (
+    assertions,
+    auth,
+    cases,
+    environments,
+    executions,
+    mocks,
+    recorder,
+    reports,
+    schedules,
+    suites,
+)
 
-__all__ = ["cases", "environments", "executions", "reports", "schedules", "suites"]
+__all__ = [
+    "assertions",
+    "auth",
+    "cases",
+    "environments",
+    "executions",
+    "mocks",
+    "recorder",
+    "reports",
+    "schedules",
+    "suites",
+]

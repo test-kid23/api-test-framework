@@ -62,12 +62,14 @@ class FixtureLoader:
         template_engine: Any = None,  # TemplateEngine
         extractor: Any = None,  # Extractor
         fixtures_config: dict[str, Any] | None = None,
+        mock_store: Any = None,  # MockRuleStore
     ) -> None:
         self._http_client = http_client
         self._db_executor = db_executor
         self._template = template_engine
         self._extractor = extractor
         self._fixtures_config: dict[str, Any] = fixtures_config or {}
+        self._mock_store = mock_store
 
     def run_setup(
         self,
@@ -119,6 +121,11 @@ class FixtureLoader:
             return self._execute_wait(config)
         elif action.action_type == "shell":
             self._execute_shell(config, variables)
+            return None
+        elif action.action_type == "mock_setup":
+            return self._execute_mock_setup(config, variables)
+        elif action.action_type == "mock_teardown":
+            self._execute_mock_teardown(config)
             return None
         else:
             logger.warning("unknown_fixture_action", action_type=action.action_type)
@@ -308,6 +315,90 @@ class FixtureLoader:
                 f"Shell command '{cmd_name}' failed with OS error: {e}",
                 command=cmd_name,
             ) from e
+
+    def _execute_mock_setup(
+        self,
+        config: dict[str, Any],
+        variables: dict[str, Any],
+    ) -> dict[str, Any]:
+        """执行 mock_setup — 注册 Mock 规则
+
+        config 格式:
+            rules:
+              - url_pattern: "/api/users/*"
+                method: POST
+                status_code: 201
+                response_body:
+                  id: 1
+                  name: "created_user"
+              - url_pattern: "/api/users/999"
+                method: GET
+                status_code: 404
+                response_body:
+                  error: "Not Found"
+
+        Args:
+            config: 动作配置，需包含 "rules" 列表。
+            variables: 当前变量上下文。
+
+        Returns:
+            包含 _mock_rule_ids 的字典（供 teardown 使用）。
+        """
+        if self._mock_store is None:
+            logger.warning("mock_store_not_available", hint="请确保 Mock 模块已初始化")
+            return {}
+
+        rules: list[dict[str, Any]] = config.get("rules", [])
+        if not rules:
+            logger.debug("mock_setup_no_rules")
+            return {}
+
+        registered_ids: list[str] = []
+        for rule_config in rules:
+            # 模板替换
+            url_pattern = rule_config.get("url_pattern", "/*")
+            if self._template:
+                url_pattern = self._template.render(url_pattern, variables)
+
+            resp_body = rule_config.get("response_body")
+            if self._template and isinstance(resp_body, (str, dict)):
+                resp_body = self._template.render_value(resp_body, variables)
+
+            rule = self._mock_store.register(
+                url_pattern=url_pattern,
+                method=rule_config.get("method", "ANY"),
+                status_code=rule_config.get("status_code", 200),
+                response_body=resp_body,
+                response_headers=rule_config.get("response_headers"),
+                description=rule_config.get("description", ""),
+                priority=rule_config.get("priority", 0),
+                delay_ms=rule_config.get("delay_ms", 0),
+            )
+            registered_ids.append(rule.id)
+            logger.info("mock_setup_rule_registered", rule_id=rule.id, url_pattern=url_pattern)
+
+        # 将注册的 rule IDs 存入变量，供 teardown 使用
+        return {"_mock_rule_ids": registered_ids}
+
+    def _execute_mock_teardown(self, config: dict[str, Any]) -> None:
+        """执行 mock_teardown — 清理 Mock 规则
+
+        根据之前 mock_setup 注册的 rule IDs 删除规则。
+        若未指定 IDs 则清空全部规则。
+
+        Args:
+            config: 动作配置，可选 "rule_ids" 列表。
+        """
+        if self._mock_store is None:
+            return
+
+        rule_ids: list[str] | None = config.get("rule_ids")
+        if rule_ids:
+            count = self._mock_store.delete_by_ids(rule_ids)
+            logger.info("mock_teardown_cleaned", deleted=count)
+        else:
+            count = self._mock_store.clear()
+            logger.info("mock_teardown_all_cleared", deleted=count)
 
     # ── 辅助方法 ──
 

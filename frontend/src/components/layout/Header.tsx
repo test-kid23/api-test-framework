@@ -1,7 +1,10 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAppStore } from "@/store/appStore";
-import { Menu, Search, ChevronDown, Settings, Sun, Moon, Monitor } from "lucide-react";
+import { useAuthStore } from "@/store/authStore";
+import { usePermission } from "@/hooks/usePermission";
+import { ChangePasswordDialog } from "@/components/auth/ChangePasswordDialog";
+import { Menu, Search, ChevronDown, Settings, Sun, Moon, Monitor, LogOut, Key } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import {
@@ -30,15 +33,24 @@ const quickLinks = [
   { label: "定时调度", to: "/schedules", shortcut: "T" },
 ];
 
+const roleLabels: Record<string, string> = {
+  admin: "管理员",
+  editor: "编辑者",
+  viewer: "观察者",
+};
+
 export function Header() {
   const toggleSidebar = useAppStore((s) => s.toggleSidebar);
   const toggleMobileSidebar = useAppStore((s) => s.toggleMobileSidebar);
-  const currentUser = useAppStore((s) => s.currentUser);
   const selectedEnv = useAppStore((s) => s.selectedEnv);
   const theme = useAppStore((s) => s.theme);
   const setTheme = useAppStore((s) => s.setTheme);
+  const user = useAuthStore((s) => s.user);
+  const logout = useAuthStore((s) => s.logout);
+  const { isAdmin } = usePermission();
   const navigate = useNavigate();
   const [cmdOpen, setCmdOpen] = useState(false);
+  const [pwdDialogOpen, setPwdDialogOpen] = useState(false);
 
   const cycleTheme = () => {
     const next: Record<"light" | "dark" | "system", "light" | "dark" | "system"> = {
@@ -57,6 +69,11 @@ export function Header() {
 
   const ThemeIcon = themeIcon;
 
+  const handleLogout = () => {
+    logout();
+    navigate("/login", { replace: true });
+  };
+
   // ⌘K / Ctrl+K 唤起命令面板
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if ((e.metaKey || e.ctrlKey) && e.key === "k") {
@@ -64,6 +81,10 @@ export function Header() {
       setCmdOpen(true);
     }
   };
+
+  const displayName = user?.username || "用户";
+  const roleLabel = roleLabels[user?.role || ""] || user?.role || "";
+  const initial = displayName.charAt(0).toUpperCase();
 
   return (
     <>
@@ -134,19 +155,37 @@ export function Header() {
               <Button variant="ghost" size="sm" className="flex items-center gap-2">
                 <Avatar className="h-7 w-7">
                   <AvatarFallback className="text-xs bg-primary/10 text-primary font-medium">
-                    {currentUser.name.charAt(0)}
+                    {initial}
                   </AvatarFallback>
                 </Avatar>
-                <span className="text-sm hidden md:inline">{currentUser.name}</span>
+                <span className="text-sm hidden md:inline">{displayName}</span>
                 <ChevronDown className="h-3 w-3" />
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-48">
-              <DropdownMenuLabel>账户</DropdownMenuLabel>
+              <DropdownMenuLabel>
+                <div className="flex flex-col gap-0.5">
+                  <span>{displayName}</span>
+                  {roleLabel && (
+                    <span className="text-xs font-normal text-muted-foreground">{roleLabel}</span>
+                  )}
+                </div>
+              </DropdownMenuLabel>
               <DropdownMenuSeparator />
-              <DropdownMenuItem onClick={() => navigate("/environments")}>
-                <Settings className="mr-2 h-4 w-4" />
-                系统设置
+              <DropdownMenuItem onClick={() => setPwdDialogOpen(true)}>
+                <Key className="mr-2 h-4 w-4" />
+                修改密码
+              </DropdownMenuItem>
+              {isAdmin && (
+                <DropdownMenuItem onClick={() => navigate("/environments")}>
+                  <Settings className="mr-2 h-4 w-4" />
+                  系统设置
+                </DropdownMenuItem>
+              )}
+              <DropdownMenuSeparator />
+              <DropdownMenuItem onClick={handleLogout} className="text-destructive focus:text-destructive">
+                <LogOut className="mr-2 h-4 w-4" />
+                退出登录
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
@@ -176,6 +215,12 @@ export function Header() {
           </CommandGroup>
         </CommandList>
       </CommandDialog>
+
+      {/* Change Password Dialog */}
+      <ChangePasswordDialog
+        open={pwdDialogOpen}
+        onOpenChange={setPwdDialogOpen}
+      />
     </>
   );
 }

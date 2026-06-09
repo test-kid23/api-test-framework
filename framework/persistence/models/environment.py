@@ -16,7 +16,7 @@ from __future__ import annotations
 import uuid
 from datetime import datetime
 
-from sqlalchemy import DateTime, JSON, String, Text, func
+from sqlalchemy import DateTime, ForeignKey, JSON, String, Text, func
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -63,6 +63,13 @@ class EnvironmentModel(Base):
         JSON,
         nullable=True,
         comment="HTTP 客户端覆盖配置（timeout/verify_ssl 等）",
+    )
+    project_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("projects.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+        comment="所属项目 ID（多租户隔离）",
     )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
