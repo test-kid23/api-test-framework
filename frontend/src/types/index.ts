@@ -508,3 +508,67 @@ export interface SmartAssertionSuccessResponse<T> {
   success: boolean;
   data: T;
 }
+
+// ── Analytics ─────────────────────────────────────────────────
+
+export interface StabilityRankingItem {
+  case_name: string;
+  case_id: string;
+  total: number;
+  passed: number;
+  failed: number;
+  failure_rate: number;
+  avg_elapsed_ms: number;
+  last_executed_at: string | null;
+}
+
+export interface StabilityRankingResponse {
+  days: number;
+  items: StabilityRankingItem[];
+}
+
+export interface PercentileItem {
+  p50: number;
+  p95: number;
+  p99: number;
+  avg: number;
+  min: number;
+  max: number;
+  total_samples: number;
+}
+
+export interface PercentileResponse {
+  days: number;
+  data: PercentileItem;
+}
+
+export interface FailureCategoryItem {
+  category: string;
+  label: string;
+  count: number;
+  percentage: number;
+  examples: string[];
+}
+
+export interface FailureCategoryResponse {
+  days: number;
+  items: FailureCategoryItem[];
+}
+
+export interface Recent30dStats {
+  execution_count: number;
+  test_run_count: number;
+  pass_rate: number;
+}
+
+export interface RoiStatsItem {
+  total_automated_cases: number;
+  covered_endpoints: number;
+  total_executions: number;
+  total_test_runs: number;
+  overall_pass_rate: number;
+  estimated_manual_hours: number;
+  estimated_auto_hours: number;
+  estimated_hours_saved: number;
+  recent_30d: Recent30dStats;
+}

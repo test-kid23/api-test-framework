@@ -14,7 +14,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.openapi.utils import get_openapi
 from fastapi.responses import JSONResponse
 
-from api.routers import assertions, auth, cases, environments, executions, mocks, recorder, reports, schedules, suites, users
+from api.routers import analytics, assertions, auth, cases, environments, executions, mocks, recorder, reports, schedules, suites, users
 from api.schemas.common import ErrorDetail, ErrorResponse
 from framework.mock.server import create_mock_app
 from framework.scheduler import get_scheduler
@@ -55,6 +55,7 @@ TAGS_METADATA = [
     {"name": "mocks", "description": "Mock 规则管理"},
     {"name": "recorder", "description": "流量录制与回放"},
     {"name": "smart-assertions", "description": "智能断言 — Schema 推断与变更检测"},
+    {"name": "analytics", "description": "高级分析 — 稳定性排行、分位数、失败分类、ROI"},
     {"name": "users", "description": "用户管理（admin）"},
 ]
 
@@ -170,6 +171,7 @@ def create_app() -> FastAPI:
     app.include_router(suites.router)
     app.include_router(executions.router)
     app.include_router(reports.router)
+    app.include_router(analytics.router)
     app.include_router(schedules.router)
     app.include_router(environments.router)
     app.include_router(mocks.router)

@@ -1,12 +1,13 @@
 # AutoTest Framework — 企业级 API 自动化测试框架
 
-> Python 3.10+ | pytest | httpx | YAML 驱动 | 结构化日志 | 策略模式引擎
+> **v2.1.0** | Python 3.12+ | pytest 8.x | httpx 0.28.x | YAML 驱动 | 结构化日志 | 策略模式引擎
 
 ## 目录
 
 - [特性总览](#特性总览)
 - [快速开始](#快速开始)
 - [API 服务](#api-服务)
+- [CLI 工具](#cli-工具)
 - [项目结构](#项目结构)
 - [用例编写指南](#用例编写指南)
 - [执行与运行](#执行与运行)
@@ -16,15 +17,24 @@
 - [Fixture 与 Setup/Teardown](#fixture-与-setupteardown)
 - [数据库集成](#数据库集成)
 - [WebSocket 测试](#websocket-测试)
+- [Mock 服务](#mock-服务)
+- [流量录制与回放](#流量录制与回放)
+- [智能断言与 Schema 推断](#智能断言与-schema-推断)
+- [调度引擎](#调度引擎)
+- [告警通知](#告警通知)
+- [分布式执行](#分布式执行)
 - [插件系统与钩子](#插件系统与钩子)
 - [自定义插件开发](#自定义插件开发)
 - [拦截器链](#拦截器链)
 - [报告系统](#报告系统)
 - [日志系统](#日志系统)
 - [配置管理](#配置管理)
+- [多租户与 RBAC](#多租户与-rbac)
+- [前端管理界面](#前端管理界面)
 - [CI/CD 集成](#cicd-集成)
 - [命令速查](#命令速查)
 - [架构设计](#架构设计)
+- [开发计划](#开发计划)
 - [License](#license)
 
 ---
@@ -39,7 +49,7 @@
 | **变量提取** | 6 种提取类型（jsonpath/header/body_regex/status_code/elapsed/sql_column） |
 | **Fixture 系统** | setup/teardown 支持 api_call / db_execute / wait / shell 四种动作 |
 | **数据库集成** | setup/teardown 中执行 SQL，从查询结果提取变量，支持 MySQL/PostgreSQL/SQLite |
-| **WebSocket 支持** | WS 接口收发消息、断言验证 |
+| **WebSocket 支持** | 纯异步 WS 执行器，收发消息、断言验证 |
 | **多环境切换** | `--env=staging` 一行命令切换环境 |
 | **插件系统** | 13 个生命周期钩子，优先级排序，自动发现，插件间通信 |
 | **拦截器链** | 洋葱模型请求/响应拦截，内置认证与日志拦截器 |
@@ -47,28 +57,60 @@
 | **结构化日志** | structlog + JSON + trace_id + 敏感数据脱敏 |
 | **安全加固** | Shell 白名单、日志脱敏、线程安全操作符、配置 Schema 校验 |
 | **并行执行** | pytest-xdist 多进程并发 |
-| **CI/CD 就绪** | GitHub Actions / Jenkins / GitLab CI / Docker |
+| **数据持久化** | SQLAlchemy 2.0 异步 ORM + Alembic 迁移 + Repository 模式 |
+| **REST API 服务** | FastAPI 全功能 API 层（12 个路由模块 + JWT 认证 + RBAC） |
+| **CLI 工具** | `autotest run/sync/import/serve/report` 命令行工具 |
+| **OpenAPI 导入** | 解析 OpenAPI 3.x Spec 自动生成测试用例 |
+| **YAML ↔ DB 同步** | 用例在 YAML 文件与数据库之间双向同步 |
+| **分布式执行** | Celery + Redis Master-Worker 架构，自动降级本地模式 |
+| **调度引擎** | APScheduler 定时/周期执行，DB 持久化调度配置 |
+| **告警通知** | 企微/钉钉/Webhook/邮件多渠道通知，规则评估 + 并行分发 |
+| **Mock 服务** | 内置 Mock 引擎，规则匹配 + 动态响应，支持前端管理 |
+| **流量录制与回放** | HAR 格式录制→回放→差异对比→自动生成用例 |
+| **智能断言** | Schema 推断 + 变更检测 + 自动生成断言规则 |
+| **多租户与 RBAC** | JWT + bcrypt + admin/editor/viewer 三级角色 |
+| **Web 管理前端** | React 18 + Vite + shadcn/ui，16 页面 + 20 路由 + TanStack Query |
+| **CI/CD 就绪** | GitHub Actions / Jenkins / GitLab CI / Docker Compose 全栈部署 |
 
 ---
 
 ## 快速开始
 
-### 1. 安装依赖
+### 前置条件
+
+| 工具 | 最低版本 | 说明 |
+|------|----------|------|
+| **Python** | **>= 3.12** | 框架使用 PEP 695 `type` 语句等 3.12+ 特性 |
+| **pip** | >= 23.0 | 随 Python 3.12 自带 |
+| **Node.js** | >= 18 | 前端开发（可选，仅需管理前端时安装） |
+
+> **换电脑/CI 环境首次克隆后**：虚拟环境和依赖不会随仓库分发（已通过 `.gitignore` 排除），需要重新创建环境并安装依赖。
+
+### 1. 创建虚拟环境（推荐）
 
 ```bash
-# 核心依赖
+# 创建虚拟环境
+python -m venv .venv
+
+# 激活虚拟环境
+# Windows:
+.venv\Scripts\activate
+# macOS/Linux:
+source .venv/bin/activate
+```
+
+### 2. 安装依赖
+
+```bash
+# 一键安装全部依赖（含 API 服务、数据库、WebSocket、分布式执行、调度器、JWT 认证等）
 pip install -r requirements.txt
 
-# 可选：数据库支持
-pip install SQLAlchemy pymysql psycopg2-binary
-
-# 可选：WebSocket 支持
-pip install websockets
-
-# 开发工具链
+# 开发工具链（可选）
 pip install black isort ruff mypy pre-commit pytest-cov
 pre-commit install
 ```
+
+> **注意**：`requirements.txt` 已包含 `fastapi`、`uvicorn`、`structlog`、`SQLAlchemy`、`apscheduler`、`PyJWT`、`bcrypt` 等全部运行时依赖，**不需要**再单独安装。README 旧版拆分安装的命令已废弃。
 
 ### 2. 编写第一个用例
 
@@ -121,85 +163,134 @@ pytest -n 4 testcases/
 make report
 ```
 
-### 4. 启动 API 服务
+### 5. 启动 API 服务
 
 ```bash
-# 安装 API 依赖
-pip install fastapi uvicorn[standard]
+# 确保在项目根目录执行（数据库文件、配置文件路径依赖工作目录）
+cd /path/to/apitestframework
 
-# 开发模式（热重载）
+# 开发模式（热重载，代码变更自动重启）
 uvicorn api.main:app --reload --host 0.0.0.0 --port 8000
 
-# 生产模式
+# 生产模式（多 worker，不支持 --reload）
 uvicorn api.main:app --host 0.0.0.0 --port 8000 --workers 4
 
-# 访问 Swagger UI
-# http://localhost:8000/docs
+# 验证
+curl http://localhost:8000/health
+# 访问 Swagger UI: http://localhost:8000/docs
 ```
+
+### 后端启动常见问题
+
+| 现象 | 原因 | 解决 |
+|------|------|------|
+| `ModuleNotFoundError: No module named 'structlog'` | 依赖未完整安装 | 执行 `pip install -r requirements.txt` |
+| `ModuleNotFoundError: No module named 'apscheduler'` | 同上 | 同上 |
+| `unable to open database file` | 未从项目根目录启动，SQLite 路径解析失败 | `cd` 到项目根目录再启动 |
+| `SchedulerNotRunningError` | SQLite DB 初始化失败导致调度器未启动（不影响 API 核心功能） | 检查工作目录是否正确，确保 `data/` 目录存在 |
+| `Python 3.11` 语法报错 | 框架要求 Python >= 3.12（使用了 PEP 695 等新语法） | 升级到 Python 3.12+ |
+| 全局 pip 环境依赖冲突 | 多个项目共享同一 Python 环境 | **强烈建议用虚拟环境**（见步骤 1） |
 
 ---
 
 ## API 服务
 
-框架提供基于 FastAPI 的 REST API 服务层，用于用例管理、执行触发和报告查询。
+框架提供基于 FastAPI 的全功能 REST API 服务层，涵盖用例管理、执行调度、报告查询、Mock 规则、流量录制、智能断言、用户管理等。
 
 ### API 接口总览
 
 | 资源 | 方法 | 路径 | 说明 | 状态 |
 |------|------|------|------|------|
 | 健康检查 | `GET` | `/health` | 服务健康检查 | ✅ |
-| 用例 | `POST` | `/api/v1/cases` | 创建用例 | ✅ |
-| 用例 | `GET` | `/api/v1/cases` | 用例列表（分页+过滤） | ✅ |
-| 用例 | `GET` | `/api/v1/cases/{id}` | 查看用例详情 | ✅ |
-| 用例 | `PUT` | `/api/v1/cases/{id}` | 更新用例（版本递增） | ✅ |
-| 用例 | `DELETE` | `/api/v1/cases/{id}` | 删除用例 | ✅ |
-| 用例 | `GET` | `/api/v1/cases/{id}/versions` | 版本历史 | ✅ |
-| 套件 | `POST` `GET` `PUT` `DELETE` | `/api/v1/suites` | 套件 CRUD | 🔧 占位 |
-| 执行 | `POST` `GET` | `/api/v1/executions` | 触发执行 + 历史 | 🔧 占位 |
-| 报告 | `GET` | `/api/v1/reports` | 报告查询 + 趋势 | 🔧 占位 |
+| 认证 | `POST` | `/api/v1/auth/login` | 用户登录获取 JWT | ✅ |
+| 认证 | `POST` | `/api/v1/auth/register` | 用户注册 | ✅ |
+| 用例 | `POST` `GET` `PUT` `DELETE` | `/api/v1/cases` | 用例 CRUD + 版本历史 | ✅ |
+| 套件 | `POST` `GET` `PUT` `DELETE` | `/api/v1/suites` | 套件 CRUD | ✅ |
+| 执行 | `POST` `GET` | `/api/v1/executions` | 触发执行 + 历史查询 | ✅ |
+| 报告 | `GET` | `/api/v1/reports` | 报告查询 + 趋势分析 | ✅ |
+| 环境 | `POST` `GET` `PUT` `DELETE` | `/api/v1/environments` | 环境配置管理 | ✅ |
+| 调度 | `POST` `GET` `PUT` `DELETE` | `/api/v1/schedules` | 定时任务管理 | ✅ |
+| Mock 规则 | `POST` `GET` `PUT` `DELETE` | `/api/v1/mocks` | Mock 规则 CRUD | ✅ |
+| 录制回放 | `POST` `GET` | `/api/v1/recorder` | 流量录制/回放/差异对比 | ✅ |
+| 智能断言 | `POST` | `/api/v1/assertions` | Schema 推断 + 变更检测 | ✅ |
+| 用户管理 | `POST` `GET` `PUT` `DELETE` | `/api/v1/users` | 用户 CRUD（admin 专属） | ✅ |
 
 ### 服务目录结构
 
 ```
 api/
 ├── main.py               # FastAPI app 入口（CORS、路由、异常处理）
-├── dependencies.py        # 依赖注入 + 线程安全 InMemoryStore
+├── auth.py                # JWT 认证 + bcrypt 密码哈希
+├── dependencies.py        # 依赖注入（Runner + DB session + 环境加载）
 ├── routers/
-│   ├── cases.py           # 用例 CRUD（完整实现）
-│   ├── suites.py          # 套件 CRUD（占位）
-│   ├── executions.py      # 执行触发/结果查询（占位）
-│   └── reports.py         # 报告查询/趋势/TopN（占位）
-└── schemas/
-    ├── common.py          # 通用：分页、错误/成功响应
-    ├── case.py            # 用例：CRUD 的请求/响应模型
-    ├── execution.py       # 执行：请求/响应模型
-    └── report.py          # 报告：列表/趋势/失败项模型
+│   ├── assertions.py      # 智能断言 API
+│   ├── auth.py            # 认证 API（login/register）
+│   ├── cases.py           # 用例 CRUD（完整实现 + 版本管理）
+│   ├── environments.py    # 环境配置管理
+│   ├── executions.py      # 执行触发/结果查询
+│   ├── mocks.py           # Mock 规则管理
+│   ├── recorder.py        # 流量录制与回放
+│   ├── reports.py         # 报告查询/趋势分析
+│   ├── schedules.py       # 定时调度管理
+│   ├── suites.py          # 套件 CRUD
+│   └── users.py           # 用户管理（admin）
+└── schemas/               # 9 个 Pydantic Schema 模块
 ```
 
 ### 手工测试 API（curl）
 
 ```bash
-# 创建用例
+# 用户登录获取 Token
+curl -X POST http://localhost:8000/api/v1/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"username":"admin","password":"admin123"}'
+
+# 创建用例（需 Bearer Token）
 curl -X POST http://localhost:8000/api/v1/cases \
   -H "Content-Type: application/json" \
+  -H "Authorization: Bearer <token>" \
   -d '{"name":"登录测试","tags":["smoke"],"priority":"P0","yaml_content":"name: test"}'
 
 # 查看列表
-curl http://localhost:8000/api/v1/cases
+curl http://localhost:8000/api/v1/cases \
+  -H "Authorization: Bearer <token>"
 
 # 按标签过滤
-curl "http://localhost:8000/api/v1/cases?tags=smoke&priority=P0"
+curl "http://localhost:8000/api/v1/cases?tags=smoke&priority=P0" \
+  -H "Authorization: Bearer <token>"
 
-# 更新用例
-curl -X PUT http://localhost:8000/api/v1/cases/<id> \
+# 触发执行
+curl -X POST http://localhost:8000/api/v1/executions \
   -H "Content-Type: application/json" \
-  -d '{"priority":"P1","description":"更新后的描述"}'
+  -H "Authorization: Bearer <token>" \
+  -d '{"case_ids": ["<id1>", "<id2>"], "env_name": "dev"}'
 
-# 查看版本历史
-curl http://localhost:8000/api/v1/cases/<id>/versions
+# Swagger UI
+# http://localhost:8000/docs
+```
 
-# 删除用例
-curl -X DELETE http://localhost:8000/api/v1/cases/<id>
+---
+
+## CLI 工具
+
+框架提供 `autotest` 命令行工具，支持以下子命令：
+
+```bash
+# 运行测试
+autotest run --env dev --tags smoke testcases/
+
+# YAML ↔ DB 双向同步
+autotest sync --direction yaml-to-db
+autotest sync --direction db-to-yaml
+
+# 导入 OpenAPI Spec 生成用例
+autotest import --file openapi.yaml --output testcases/generated/
+
+# 启动 API 服务
+autotest serve --host 0.0.0.0 --port 8000
+
+# 查看执行报告
+autotest report --execution-id <id>
 ```
 
 ---
@@ -210,48 +301,104 @@ curl -X DELETE http://localhost:8000/api/v1/cases/<id>
 api-test-framework/
 ├── config/                       # 配置目录
 │   ├── config.yaml               # 全局配置（HTTP/日志/报告/数据库等）
-│   ├── env.yaml                  # 多环境配置（dev/staging/production/local）
-│   └── env.local.yaml            # 本地覆盖（已 gitignore，存敏感信息）
+│   └── env.yaml                  # 多环境配置（dev/staging/production/local）
 ├── api/                          # FastAPI REST 服务层
 │   ├── main.py                   #   FastAPI app 入口（CORS、路由、异常处理）
-│   ├── dependencies.py           #   依赖注入 + 线程安全 InMemoryStore
-│   ├── routers/                  #   路由模块（cases/suites/executions/reports）
-│   └── schemas/                  #   Pydantic 请求/响应模型（v2）
+│   ├── auth.py                   #   JWT 认证 + bcrypt 密码哈希
+│   ├── dependencies.py           #   依赖注入（Runner + DB session + 环境加载）
+│   ├── routers/                  #   12 个路由模块
+│   │   ├── assertions.py         #     智能断言 API
+│   │   ├── auth.py               #     认证 API
+│   │   ├── cases.py              #     用例 CRUD + 版本管理
+│   │   ├── environments.py       #     环境配置管理
+│   │   ├── executions.py         #     执行触发/结果查询
+│   │   ├── mocks.py              #     Mock 规则管理
+│   │   ├── recorder.py           #     流量录制与回放
+│   │   ├── reports.py            #     报告查询/趋势分析
+│   │   ├── schedules.py          #     定时调度管理
+│   │   ├── suites.py             #     套件 CRUD
+│   │   └── users.py              #     用户管理（admin）
+│   ├── schemas/                  #   9 个 Pydantic Schema 模块
+│   └── static/                   #   Vite 前端构建产物
 ├── framework/                    # 框架核心代码
 │   ├── runner.py                 # 测试执行引擎（策略路由 + 插件调度）
 │   ├── client.py                 # HTTP 客户端（httpx + 拦截器链）
-│   ├── assertion.py              # 断言引擎（16 种操作符 + 可扩展）
-│   ├── extractor.py              # 变量提取器（6 种提取类型）
-│   ├── fixtures_loader.py        # Fixture 加载器（安全加固版）
+│   ├── collector.py              # pytest 用例收集器（YamlCollector）
 │   ├── context.py                # 协程安全上下文（contextvars 三层作用域）
 │   ├── config.py                 # 配置加载器（多源合并）
 │   ├── config_schema.py          # 配置 Schema 校验（Pydantic v2）
 │   ├── models.py                 # 数据模型（Pydantic v2）
 │   ├── parser.py                 # YAML 解析器
-│   ├── collector.py              # pytest 用例收集器（YamlCollector）
-│   ├── db.py                     # 数据库模块（SQLAlchemy 2.0）
+│   ├── extractor.py              # 变量提取器（6 种提取类型）
+│   ├── fixtures_loader.py        # Fixture 加载器（安全加固版）
 │   ├── exceptions.py             # 自定义异常体系
+│   ├── db.py                     # 数据库模块（SQLAlchemy 2.0）
+│   ├── cli.py                    # CLI 工具（run/sync/import/serve/report）
+│   ├── sync.py                   # YAML ↔ DB 双向同步
+│   ├── scheduler.py              # 调度引擎（APScheduler）
+│   ├── assertion/                # 断言引擎子包
+│   │   ├── engine.py             #   16 种操作符 + AssertionEngine
+│   │   └── smart.py              #   智能断言（Schema 推断 + 变更检测）
 │   ├── executors/                # 协议执行器（策略模式）
 │   │   ├── base.py               #   StepExecutor 抽象基类
 │   │   ├── http_executor.py      #   HTTP 步骤执行器
-│   │   └── ws_executor.py        #   WebSocket 步骤执行器
+│   │   └── ws_async_executor.py  #   纯异步 WebSocket 执行器
+│   ├── importers/                # 外部格式导入
+│   │   └── openapi_parser.py     #   OpenAPI 3.x Spec 解析 + 用例生成
+│   ├── interceptors/             # 请求拦截器链
+│   │   ├── base.py               #   RequestInterceptor 抽象基类
+│   │   ├── auth.py               #   AuthInterceptor 认证拦截器
+│   │   └── logging.py            #   LoggingInterceptor 日志拦截器
+│   ├── mock/                     # Mock 服务引擎
+│   │   ├── models.py             #   Mock 数据模型
+│   │   ├── rule_store.py         #   规则存储与匹配
+│   │   ├── server.py             #   FastAPI 子应用
+│   │   └── plugin.py             #   Mock 插件
+│   ├── notifications/            # 告警通知服务
+│   │   ├── base.py               #   通知渠道抽象基类
+│   │   ├── service.py            #   通知服务（规则评估 + 并行分发）
+│   │   ├── dingtalk_channel.py   #   钉钉通知
+│   │   ├── email_channel.py      #   邮件通知
+│   │   ├── webhook_channel.py    #   Webhook 通知
+│   │   └── wecom_channel.py      #   企业微信通知
+│   ├── persistence/              # 数据持久化层
+│   │   ├── database.py           #   数据库连接管理
+│   │   ├── bridge.py             #   ORM ↔ Pydantic 桥接
+│   │   ├── models/               #   8 个 SQLAlchemy ORM 模型
+│   │   ├── repositories/         #   8 个 Repository 实现
+│   │   └── services/             #   业务服务层
+│   ├── plugins/                  # 插件系统
+│   │   ├── base.py               #   PluginBase（13 个生命周期钩子）
+│   │   ├── manager.py            #   PluginManager（自动发现/排序/分发）
+│   │   └── auth_manager.py       #   AuthManager 认证管理插件
+│   ├── recorder/                 # 流量录制与回放
+│   │   ├── har_models.py         #   HAR 数据模型
+│   │   ├── har_recorder.py       #   HAR 录制器
+│   │   ├── recorder_manager.py   #   录制管理器
+│   │   ├── player.py             #   回放引擎
+│   │   ├── differ.py             #   差异对比器
+│   │   └── case_generator.py     #   用例生成器
 │   ├── report/                   # 报告模块（多引擎适配）
 │   │   ├── base.py               #   ReportAdapter 抽象基类
 │   │   ├── allure.py             #   Allure 适配器
 │   │   ├── html_adapter.py       #   HTML 适配器
 │   │   └── models.py             #   报告数据模型
-│   ├── plugins/                  # 插件系统
-│   │   ├── base.py               #   PluginBase（13 个生命周期钩子）
-│   │   ├── manager.py            #   PluginManager（自动发现/排序/分发）
-│   │   └── auth_manager.py       #   AuthManager 认证管理插件
-│   ├── interceptors/             # 请求拦截器链
-│   │   ├── base.py               #   RequestInterceptor 抽象基类
-│   │   ├── auth.py               #   AuthInterceptor 认证拦截器
-│   │   └── logging.py            #   LoggingInterceptor 日志拦截器
 │   └── utils/                    # 工具模块
 │       ├── logger.py             #   structlog 结构化日志 + trace_id
 │       ├── masker.py             #   SensitiveDataMasker 敏感数据脱敏
 │       └── template.py           #   Jinja2 模板引擎
+├── frontend/                     # Web 管理前端（React 18 + Vite + shadcn/ui）
+│   └── src/
+│       ├── api/                  #   12 个 API 封装模块（Axios + TanStack Query）
+│       ├── components/           #   UI 组件 + shadcn/ui + AuthGuard + RoleGuard
+│       ├── hooks/                #   TanStack Query Hooks
+│       ├── pages/                #   16 个业务页面
+│       ├── router/               #   20 条路由
+│       ├── store/                #   Zustand 状态管理
+│       └── types/                #   TypeScript 类型定义
+├── worker/                       # Celery 分布式 Worker
+│   ├── celery_app.py             #   Celery 应用配置
+│   └── tasks.py                  #   异步任务定义
 ├── testcases/                    # YAML 测试用例
 │   ├── local/                    #   本地环境用例
 │   ├── smoke/                    #   冒烟测试
@@ -261,12 +408,22 @@ api-test-framework/
 ├── tests/                        # 框架单元测试
 │   ├── framework/                #   核心模块测试
 │   └── smoke/                    #   冒烟测试
-├── conftest.py                   # pytest 全局配置（精简版）
+├── alembic/                      # 数据库迁移
+│   ├── env.py
+│   └── versions/                 # 迁移版本文件
+├── docker/                       # Docker 辅助脚本
+│   └── entrypoint.sh
+├── conftest.py                   # pytest 全局配置
 ├── Makefile                      # 常用命令
-├── Dockerfile                    # Docker 支持（三层构建优化）
-├── docker-compose.test.yml       # Docker Compose 编排
+├── Dockerfile                    # 三层构建优化
+├── Dockerfile.api                # API 服务独立镜像
+├── docker-compose.yml            # 5 服务全栈编排
+├── docker-compose.dev.yml        # 开发环境编排
+├── docker-compose.test.yml       # 测试环境编排
+├── nginx.conf                    # Nginx 反向代理配置
 ├── pyproject.toml                # 项目配置 + 工具链
 ├── requirements.txt              # 依赖
+├── requirements.lock             # 锁定依赖版本
 ├── .pre-commit-config.yaml       # Git 提交前检查
 ├── .dockerignore                 # Docker 构建排除
 └── docs/                         # 文档
@@ -496,7 +653,13 @@ docker run --rm \
   -e ENV=staging \
   autotest
 
-# Docker Compose（包含数据库服务）
+# Docker Compose 全栈部署（API + Worker + DB + Redis + Nginx）
+docker compose up -d
+
+# 开发环境（热重载）
+docker compose -f docker-compose.dev.yml up
+
+# 测试环境（含数据库服务）
 docker compose -f docker-compose.test.yml up
 ```
 
@@ -903,6 +1066,176 @@ cases:
           data: '{"type": "bye"}'
       close_timeout: 3
 ```
+
+---
+
+## Mock 服务
+
+框架内置 Mock 服务引擎，可在测试中模拟外部依赖。
+
+### Mock 规则配置
+
+```yaml
+# 通过 API 或 YAML 定义 Mock 规则
+rules:
+  - name: "模拟用户服务"
+    method: GET
+    path_pattern: "/api/users/*"
+    response:
+      status_code: 200
+      headers:
+        Content-Type: "application/json"
+      body:
+        code: 200
+        data:
+          id: 1
+          name: "mock_user"
+    delay_ms: 100    # 模拟延迟
+```
+
+### 启动 Mock 服务
+
+```bash
+# Mock 服务随 API 服务自动启动
+# 访问 http://localhost:8000/mock/
+
+# 前端管理：Mock Rules 页面
+# 路由：/mocks
+```
+
+---
+
+## 流量录制与回放
+
+录制真实 API 流量为 HAR 格式，支持回放、差异对比和自动生成测试用例。
+
+### 录制模式
+
+```bash
+# 启动录制（通过 API）
+curl -X POST http://localhost:8000/api/v1/recorder/start \
+  -H "Authorization: Bearer <token>" \
+  -d '{"name": "用户模块录制", "filter_path": "/api/users/*"}'
+
+# 停止录制
+curl -X POST http://localhost:8000/api/v1/recorder/stop
+
+# 回放并对比差异
+curl -X POST http://localhost:8000/api/v1/recorder/play \
+  -H "Authorization: Bearer <token>" \
+  -d '{"recording_id": "<id>"}'
+
+# 生成测试用例
+curl -X POST http://localhost:8000/api/v1/recorder/generate-cases \
+  -H "Authorization: Bearer <token>" \
+  -d '{"recording_id": "<id>"}'
+```
+
+### 差异对比
+
+回放时自动对比：
+- 状态码变化
+- 响应头差异
+- JSON Body 字段增删改
+
+---
+
+## 智能断言与 Schema 推断
+
+基于历史响应数据自动推断 JSON Schema 并生成断言规则。
+
+### Schema 推断
+
+```bash
+# 提交样本响应进行 Schema 推断
+curl -X POST http://localhost:8000/api/v1/assertions/infer-schema \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer <token>" \
+  -d '{"samples": [{"id": 1, "name": "test"}, {"id": 2, "name": "demo"}]}'
+```
+
+### 变更检测
+
+对比新旧 Schema 检测字段变更：
+- 新增字段
+- 删除字段
+- 类型变化
+- 必填/可选变化
+
+---
+
+## 调度引擎
+
+支持定时和周期执行测试用例，调度配置持久化到数据库。
+
+```bash
+# 创建每日定时执行
+curl -X POST http://localhost:8000/api/v1/schedules \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer <token>" \
+  -d '{
+    "name": "每日冒烟测试",
+    "cron_expression": "0 8 * * *",
+    "case_ids": ["<id1>", "<id2>"],
+    "env_name": "dev",
+    "enabled": true
+  }'
+
+# 查看调度列表
+curl http://localhost:8000/api/v1/schedules \
+  -H "Authorization: Bearer <token>"
+```
+
+---
+
+## 告警通知
+
+执行失败或异常时自动通过多渠道发送告警通知。
+
+### 支持的通知渠道
+
+| 渠道 | 说明 |
+|------|------|
+| 企业微信 | 机器人 Webhook 消息 |
+| 钉钉 | 机器人 Webhook 消息 |
+| Webhook | 自定义 HTTP 回调 |
+| 邮件 | SMTP 邮件通知 |
+
+### 告警规则
+
+```yaml
+notifications:
+  channels:
+    wecom:
+      enabled: true
+      webhook_url: "https://qyapi.weixin.qq.com/..."
+  rules:
+    - name: "P0 用例失败告警"
+      condition: "priority == 'P0' and status == 'failed'"
+      channels: ["wecom", "email"]
+```
+
+---
+
+## 分布式执行
+
+基于 Celery + Redis 的 Master-Worker 分布式架构，支持自动降级为本地模式。
+
+```bash
+# 启动 Worker
+celery -A worker.celery_app worker --loglevel=info
+
+# 启动 Beat（定时调度）
+celery -A worker.celery_app beat --loglevel=info
+
+# 触发分布式执行（通过 API）
+curl -X POST http://localhost:8000/api/v1/executions \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer <token>" \
+  -d '{"case_ids": ["<id>"], "env_name": "dev", "mode": "distributed"}'
+```
+
+> Redis 不可用时自动降级为本地同步执行模式，无需人工干预。
 
 ---
 
@@ -1399,7 +1732,13 @@ docker run --rm \
   -e DB_PASSWORD=secret \
   autotest
 
-# Docker Compose（含数据库）
+# Docker Compose 全栈部署（API + Worker + DB + Redis + Nginx）
+docker compose up -d
+
+# 开发环境（热重载）
+docker compose -f docker-compose.dev.yml up
+
+# 测试环境（含数据库）
 docker compose -f docker-compose.test.yml up
 ```
 
@@ -1418,6 +1757,8 @@ docker compose -f docker-compose.test.yml up
 | `make collect` | 只列出用例不执行 |
 | `make debug` | 调试模式（DEBUG 日志） |
 | `make clean` | 清理报告和日志 |
+| `make up` | 启动 Docker Compose 全栈服务 |
+| `make down` | 停止 Docker Compose 服务 |
 | `pytest --env=staging` | 指定环境运行 |
 | `pytest --tags=smoke,P0` | 指定标签过滤 |
 | `pytest --no-persist` | 跳过持久化，不写入数据库 |
@@ -1425,6 +1766,10 @@ docker compose -f docker-compose.test.yml up
 | `pytest --reruns 2` | 失败重试 2 次 |
 | `pytest --collect-only` | 仅收集用例 |
 | `pytest --pdb` | 失败进入调试器 |
+| `autotest run --env dev --tags smoke testcases/` | CLI 运行测试 |
+| `autotest sync --direction yaml-to-db` | YAML → DB 同步 |
+| `autotest import --file openapi.yaml` | OpenAPI 导入 |
+| `autotest serve --port 8000` | 启动 API 服务 |
 | `pre-commit run --all-files` | 手动运行代码检查 |
 | `uvicorn api.main:app --reload` | 启动 API 服务（开发模式） |
 | `uvicorn api.main:app --workers 4` | 启动 API 服务（生产模式） |
@@ -1469,32 +1814,121 @@ YAML 文件 → YamlCollector 收集 → YamlFunction(pytest.Function) → runne
     → 变量提升（step → case）
 ```
 
+## 多租户与 RBAC
+
+框架内置基于 JWT 的用户认证与三级角色权限控制。
+
+### 角色权限
+
+| 角色 | 权限 |
+|------|------|
+| **admin** | 全部权限：用户管理、系统配置、所有 CRUD 操作 |
+| **editor** | 用例/套件/环境/调度/Mock 的 CRUD，执行触发，报告查看 |
+| **viewer** | 只读：查看用例、执行历史、报告 |
+
+### 使用方式
+
+```bash
+# 注册用户
+curl -X POST http://localhost:8000/api/v1/auth/register \
+  -H "Content-Type: application/json" \
+  -d '{"username":"editor1","password":"pass123","role":"editor"}'
+
+# 登录获取 Token
+curl -X POST http://localhost:8000/api/v1/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"username":"editor1","password":"pass123"}'
+
+# 后续请求携带 Token
+# Authorization: Bearer <access_token>
+```
+
+> 前端内置 `AuthGuard` 和 `RoleGuard` 组件，自动拦截未授权访问。
+
+---
+
 ## 前端管理界面
 
-> Phase 4 新增，基于 React 18 + Vite + shadcn/ui 构建。
+> 基于 React 18 + Vite + shadcn/ui + TanStack Query + Zustand 构建。
+
+### 前置条件
+
+- **Node.js >= 18**（推荐 20 LTS）
+- **npm >= 9**（随 Node.js 自带）
+
+> 换电脑/CI 环境首次克隆后，`node_modules/` 不在仓库中（已通过 `.gitignore` 排除），需重新安装依赖。
+
+### 启动开发服务器
 
 ```bash
 # 进入前端目录
 cd frontend
 
-# 安装依赖
-npm install
+# 安装依赖（首次/换环境后）
+# 推荐 npm ci：按 lockfile 精确安装，确保多环境一致
+npm ci
 
-# 开发模式
+# 开发模式（默认 http://localhost:5173）
 npm run dev
 
-# 构建到 api/static/
+# 构建到 api/static/（供 Docker/生产环境使用）
 npm run build
 ```
 
+### 前端启动常见问题
+
+| 现象 | 原因 | 解决 |
+|------|------|------|
+| `'vite' 不是内部或外部命令` | `node_modules` 未安装 | 执行 `npm ci` |
+| `npm ci` 报错 | `package-lock.json` 与 `node_modules` 不一致 | 删掉 `node_modules` 后重试 |
+| 端口 5173 被占用 | 已有 Vite 实例运行 | 关掉其他终端或修改 `vite.config.ts` 端口 |
+| API 请求 404 | 后端未启动或端口不对 | 确保 `uvicorn api.main:app --port 8000` 已启动 |
+
+### Docker 注意事项
+
+- 前端**不参与 Docker 构建**（Dockerfile 仅处理 Python 后端）。
+- 前端构建产物通过 `npm run build` 输出到 `api/static/`，由 FastAPI 托管静态文件。
+- 如果前端代码更新了，需在构建 Docker 镜像**之前**先执行 `npm run build`。
+- `docker-compose.yml` 中的 nginx 将 `/` 路由直接转发到 FastAPI（含静态文件），前端页面通过 `http://localhost/` 访问。
+
+### 页面一览
+
 | 页面 | 路由 | 功能 |
 |------|------|------|
+| 登录 | `/login` | 用户登录 |
+| 注册 | `/register` | 用户注册 |
+| 仪表盘 | `/dashboard` | 通过率趋势图、失败分类饼图、Top5 不稳定接口 |
 | 用例列表 | `/cases` | 分页表格、搜索/筛选、编辑/删除操作 |
 | 用例编辑 | `/cases/new`, `/cases/:id/edit` | 创建/编辑表单、YAML 编辑、标签/优先级 |
+| 用例导入 | `/cases/import` | OpenAPI Spec 导入 |
+| 套件管理 | `/suites` | 套件 CRUD |
 | 执行历史 | `/executions` | 时间线列表、状态筛选 |
 | 执行详情 | `/executions/:id` | 通过率、耗时、用例结果明细 |
-| 报告看板 | `/dashboard` | 通过率趋势图、失败分类饼图、Top5 不稳定接口 |
+| 报告中心 | `/reports` | 报告列表、趋势分析 |
 | 环境管理 | `/environments` | 环境 CRUD、变量管理 |
+| 调度管理 | `/schedules` | 定时任务 CRUD |
+| Mock 规则 | `/mocks` | Mock 规则管理 |
+| 录制回放 | `/recorder` | 流量录制/回放/差异对比 |
+| 智能断言 | `/assertions` | Schema 推断 + 变更检测 |
+| 用户管理 | `/users` | 用户 CRUD（admin 专属） |
+
+---
+
+## 开发计划
+
+当前版本 **v2.1.0**，架构评分 **9.05/10**，37/45 任务已完成。
+
+| 阶段 | 状态 | 目标版本 |
+|------|------|---------|
+| Phase 0a: 安全止血 | ✅ 已完成 | v1.0.1 |
+| Phase 0b: 工程化加固 | ✅ 已完成 | v1.1.0 |
+| Phase 1: 架构解耦与核心重构 | ✅ 已完成 | v1.2.0 |
+| Phase 2: 引擎服务化与持久化 | ✅ 已完成 | v2.0.0 |
+| Phase 3: 平台化基础建设 | ✅ 已完成 | v2.1.0 |
+| Phase 4: 完整测试平台 | ✅ 大部分完成 | v2.1.0 |
+| Phase 5: 平台完善与生产化 | ⬜ 规划中 | v3.0.0 |
+
+> 详细计划见 [`docs/development-plan.md`](docs/development-plan.md)
 
 ---
 

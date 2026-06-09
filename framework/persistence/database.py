@@ -11,6 +11,7 @@
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncEngine, async_sessionmaker, create_async_engine as _create_async_engine
@@ -41,6 +42,9 @@ def get_db_url(db_config: dict[str, Any]) -> str:
 
     if driver == "sqlite":
         database = db_config.get("database", "data/test.db")
+        # 确保数据库文件的父目录存在（换环境首次启动时 data/ 可能不存在）
+        db_path = Path(database)
+        db_path.parent.mkdir(parents=True, exist_ok=True)
         return f"sqlite+aiosqlite:///{database}"
     elif driver == "postgresql":
         host = db_config.get("host", "localhost")

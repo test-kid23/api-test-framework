@@ -6,6 +6,7 @@ import type {
   PaginatedResponse,
   DashboardData,
 } from "@/types";
+import { analyticsApi } from "./analytics";
 
 export interface ReportListParams {
   page?: number;
@@ -40,18 +41,22 @@ export const reportsApi = {
     return data;
   },
 
-  // 兼容旧版 Dashboard 聚合（合并 trends + top-failures）
+  // 兼容旧版 Dashboard 聚合（合并 trends + top-failures + failure-categories）
   getDashboard: async (days = 30): Promise<DashboardData> => {
-    const [trends, failures] = await Promise.all([
+    const [trends, failures, failureCategories] = await Promise.all([
       reportsApi.getTrends(days),
       reportsApi.getTopFailures(10),
+      analyticsApi.getFailureCategories({ days }).catch(() => ({ items: [] })),
     ]);
     return {
       pass_rate_trend: trends.items.map((t) => ({
         date: t.date,
         rate: t.pass_rate,
       })),
-      failure_categories: [],
+      failure_categories: failureCategories.items.map((c) => ({
+        category: c.label,
+        count: c.count,
+      })),
       top_unstable: failures.items.map((f) => ({
         case_name: f.case_name,
         failure_count: f.fail_count,

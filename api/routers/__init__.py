@@ -1,6 +1,7 @@
 """API 路由模块"""
 
 from api.routers import (
+    analytics,
     assertions,
     auth,
     cases,
@@ -15,6 +16,7 @@ from api.routers import (
 )
 
 __all__ = [
+    "analytics",
     "assertions",
     "auth",
     "cases",

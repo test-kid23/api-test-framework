@@ -1,3 +1,4 @@
+# ── Python ──
 __pycache__/
 *.pyc
 *.pyo
@@ -13,3 +14,16 @@ build/
 config/env.local.yaml
 .venv/
 venv/
+
+# ── Node.js / Frontend ──
+node_modules/
+frontend/dist/
+*.tsbuildinfo
+
+# ── IDE / OS ──
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
