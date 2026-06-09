@@ -1,5 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { executionsApi, type ExecutionListParams } from "@/api/executions";
+import type { ExecutionRequest } from "@/types";
 
 export function useExecutions(params: ExecutionListParams = {}) {
   return useQuery({
@@ -17,16 +18,27 @@ export function useExecution(id: string | undefined) {
   });
 }
 
+export function useExecutionStatus(id: string | undefined) {
+  return useQuery({
+    queryKey: ["executionStatus", id],
+    queryFn: () => executionsApi.getStatus(id!),
+    enabled: !!id,
+    refetchInterval: 3000,
+  });
+}
+
+export function useExecutionReport(id: string | undefined) {
+  return useQuery({
+    queryKey: ["executionReport", id],
+    queryFn: () => executionsApi.getReport(id!),
+    enabled: !!id,
+  });
+}
+
 export function useTriggerExecution() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: ({
-      suiteId,
-      envName,
-    }: {
-      suiteId: string;
-      envName: string;
-    }) => executionsApi.trigger(suiteId, envName),
+    mutationFn: (payload: ExecutionRequest) => executionsApi.trigger(payload),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["executions"] });
     },

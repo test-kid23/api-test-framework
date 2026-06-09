@@ -3,6 +3,8 @@ import type {
   TestCase,
   TestCaseCreate,
   TestCaseUpdate,
+  CaseImportRequest,
+  CaseImportResult,
   PaginatedResponse,
 } from "@/types";
 
@@ -10,7 +12,7 @@ export interface CaseListParams {
   page?: number;
   page_size?: number;
   search?: string;
-  tags?: string;
+  tag?: string;
   priority?: string;
 }
 
@@ -48,6 +50,11 @@ export const casesApi = {
     id: string
   ): Promise<{ version: number; created_at: string }[]> => {
     const { data } = await client.get(`/cases/${id}/versions`);
+    return data;
+  },
+
+  importFromUrl: async (payload: CaseImportRequest): Promise<CaseImportResult> => {
+    const { data } = await client.post("/cases/import", payload);
     return data;
   },
 };

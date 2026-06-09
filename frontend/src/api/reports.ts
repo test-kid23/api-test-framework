@@ -1,11 +1,61 @@
 import client from "./client";
-import type { DashboardData } from "@/types";
+import type {
+  TrendResponse,
+  TopFailuresResponse,
+  ReportListItem,
+  PaginatedResponse,
+  DashboardData,
+} from "@/types";
+
+export interface ReportListParams {
+  page?: number;
+  page_size?: number;
+  env_name?: string;
+}
 
 export const reportsApi = {
-  getDashboard: async (days = 30): Promise<DashboardData> => {
-    const { data } = await client.get("/reports/dashboard", {
+  list: async (
+    params: ReportListParams = {}
+  ): Promise<PaginatedResponse<ReportListItem>> => {
+    const { data } = await client.get("/reports", { params });
+    return data;
+  },
+
+  getById: async (id: string): Promise<ReportListItem> => {
+    const { data } = await client.get(`/reports/${id}`);
+    return data;
+  },
+
+  getTrends: async (days = 30): Promise<TrendResponse> => {
+    const { data } = await client.get("/reports/trends", {
       params: { days },
     });
     return data;
+  },
+
+  getTopFailures: async (limit = 10): Promise<TopFailuresResponse> => {
+    const { data } = await client.get("/reports/top-failures", {
+      params: { limit },
+    });
+    return data;
+  },
+
+  // 兼容旧版 Dashboard 聚合（合并 trends + top-failures）
+  getDashboard: async (days = 30): Promise<DashboardData> => {
+    const [trends, failures] = await Promise.all([
+      reportsApi.getTrends(days),
+      reportsApi.getTopFailures(10),
+    ]);
+    return {
+      pass_rate_trend: trends.items.map((t) => ({
+        date: t.date,
+        rate: t.pass_rate,
+      })),
+      failure_categories: [],
+      top_unstable: failures.items.map((f) => ({
+        case_name: f.case_name,
+        failure_count: f.fail_count,
+      })),
+    };
   },
 };
