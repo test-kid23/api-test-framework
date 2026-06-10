@@ -96,10 +96,13 @@ export function CaseEditPage() {
       toast.error("YAML 内容为空");
       return;
     }
-    // 基本检查：是否有 steps 或 request 关键词
-    const hasSteps = yamlContent.includes("steps:") || yamlContent.includes("request:");
+    // 基本检查：是否有 steps / request / grpc 关键词
+    const hasSteps =
+      yamlContent.includes("steps:") ||
+      yamlContent.includes("request:") ||
+      yamlContent.includes("grpc:");
     if (!hasSteps) {
-      toast.warning("YAML 中未检测到 steps 或 request 字段");
+      toast.warning("YAML 中未检测到 steps、request 或 grpc 字段");
     } else {
       toast.success("YAML 语法检查通过");
     }
@@ -276,7 +279,27 @@ export function CaseEditPage() {
                       <Textarea
                         value={yamlContent}
                         onChange={(e) => setYamlContent(e.target.value)}
-                        placeholder="name: 用例名称&#10;steps:&#10;  - request:&#10;      method: GET&#10;      url: /api/endpoint&#10;    assertions:&#10;      - status_code: 200"
+                        placeholder={`name: 用例名称
+description: 用例描述
+tags: [grpc, smoke]
+priority: P1
+variables:
+  grpc_host: localhost:50051
+
+cases:
+  - name: grpc_sayhello
+    grpc:
+      service: greet.Greeter
+      method: SayHello
+      proto_file: testcases/grpc/greet.proto
+      host: "{{grpc_host}}"
+      body:
+        name: CodeBuddy
+      timeout: 10
+    expect:
+      body:
+        message:
+          contains: Hello`}
                         className="min-h-[420px] font-mono text-sm leading-6 border-0 rounded-none resize-none focus-visible:ring-0"
                         spellCheck={false}
                       />

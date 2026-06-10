@@ -1,0 +1,59 @@
+syntax = "proto3";
+
+package greet;
+
+// Greeter 问候服务
+service Greeter {
+  // SayHello 发送问候
+  rpc SayHello (HelloRequest) returns (HelloReply) {}
+
+  // SayHelloAgain 再次问候
+  rpc SayHelloAgain (HelloRequest) returns (HelloReply) {}
+
+  // GetUser 获取用户信息
+  rpc GetUser (UserRequest) returns (UserResponse) {}
+
+  // ListUsers 列出用户（server streaming 预留）
+  rpc ListUsers (ListUsersRequest) returns (ListUsersResponse) {}
+
+  // HealthCheck 健康检查
+  rpc HealthCheck (HealthCheckRequest) returns (HealthCheckResponse) {}
+}
+
+message HelloRequest {
+  string name = 1;
+  string greeting = 2;
+}
+
+message HelloReply {
+  string message = 1;
+  int32 timestamp = 2;
+}
+
+message UserRequest {
+  int32 user_id = 1;
+}
+
+message UserResponse {
+  int32 user_id = 1;
+  string name = 2;
+  string email = 3;
+  int32 age = 4;
+}
+
+message ListUsersRequest {
+  int32 page = 1;
+  int32 page_size = 2;
+}
+
+message ListUsersResponse {
+  repeated UserResponse users = 1;
+  int32 total = 2;
+}
+
+message HealthCheckRequest {}
+
+message HealthCheckResponse {
+  string status = 1;
+  string version = 2;
+}

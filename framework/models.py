@@ -173,6 +173,69 @@ class WSResult:
         return len(self.errors) == 0
 
 
+# ==================== gRPC ====================
+
+
+@dataclass
+class GrpcConfig:
+    """gRPC 调用配置
+
+    Attributes:
+        service: 完整的 gRPC 服务名（package.ServiceName）。
+        method: 要调用的方法名。
+        proto_file: proto 文件路径（用于动态加载服务定义）。
+        proto_dir: proto 文件搜索目录（用于 import 解析，默认与 proto_file 同目录）。
+        host: gRPC 服务地址（host:port），支持模板变量。
+        body: 请求消息体（dict，键为字段名）。
+        metadata: gRPC 元数据（key-value 对）。
+        timeout: 调用超时秒数（为 None 时使用全局默认）。
+        tls: 是否启用 TLS。
+        tls_ca_cert: CA 证书路径（TLS 时可选）。
+        reflection: 是否使用服务反射获取服务定义（优先于 proto_file）。
+    """
+
+    service: str
+    method: str
+    proto_file: str = ""
+    proto_dir: str = ""
+    host: str = "localhost:50051"
+    body: dict[str, Any] = field(default_factory=dict)
+    metadata: dict[str, str] = field(default_factory=dict)
+    timeout: int | None = None
+    tls: bool = False
+    tls_ca_cert: str = ""
+    reflection: bool = False
+
+
+@dataclass
+class GrpcResult:
+    """gRPC 调用结果
+
+    Attributes:
+        service: 调用的服务名。
+        method: 调用的方法名。
+        host: 实际连接地址。
+        request_body: 发送的请求消息体。
+        response_body: 收到的响应消息体（protobuf → dict）。
+        elapsed_ms: 调用耗时（毫秒）。
+        status_code: gRPC 状态码（grpc.StatusCode 的值）。
+        status_detail: gRPC 状态详情。
+        metadata: 响应元数据（trailing metadata）。
+        success: 调用是否成功。
+    """
+
+    service: str
+    method: str
+    host: str
+    request_body: dict[str, Any] = field(default_factory=dict)
+    response_body: dict[str, Any] = field(default_factory=dict)
+    elapsed_ms: float = 0.0
+    status_code: int = 0
+    status_detail: str = ""
+    metadata: dict[str, str] = field(default_factory=dict)
+    success: bool = True
+
+
 # ==================== 断言 ====================
 
 
@@ -362,6 +425,7 @@ class TestCase:
 
     request: HttpRequest | None = None
     ws_config: WSConfig | None = None
+    grpc_config: GrpcConfig | None = None
 
     assertions: list[AssertItem] = field(default_factory=list)
     extracts: list[ExtractItem] = field(default_factory=list)

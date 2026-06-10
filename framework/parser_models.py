@@ -26,6 +26,7 @@ class ParsedCase:
     variables: dict[str, Any] = field(default_factory=dict)
     request: dict[str, Any] | None = None
     ws_config: dict[str, Any] | None = None
+    grpc: dict[str, Any] | None = None
     expect: dict[str, Any] = field(default_factory=dict)
     extract: dict[str, Any] = field(default_factory=dict)
     db_assert: list[dict[str, Any]] = field(default_factory=list)

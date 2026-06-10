@@ -60,6 +60,7 @@ ws = [
 grpc = [
     "grpcio>=1.60.0",
     "grpcio-tools>=1.60.0",
+    "grpcio-reflection>=1.60.0",
     "protobuf>=4.25.0",
 ]
 dev = [
@@ -83,6 +84,7 @@ all = [
     "websockets>=12.0",
     "grpcio>=1.60.0",
     "grpcio-tools>=1.60.0",
+    "grpcio-reflection>=1.60.0",
     "protobuf>=4.25.0",
     "safety>=2.4.0",
     "bandit>=1.7.0",
@@ -140,6 +142,7 @@ markers = [
     "P2: 中优先级",
     "websocket: WebSocket 测试",
     "db: 数据库测试",
+    "grpc: gRPC 测试",
     "http: HTTP 方法测试",
     "get: GET 请求",
     "post: POST 请求",

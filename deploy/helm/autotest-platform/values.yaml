@@ -1,0 +1,137 @@
+# ============================================================================
+# AutoTest Platform · Helm Values
+# ============================================================================
+
+# --- Global settings ---
+global:
+  namespace: autotest
+  environment: production
+  imageRegistry: docker.io/autotest
+  imagePullPolicy: IfNotPresent
+
+# --- PostgreSQL ---
+postgres:
+  enabled: true
+  image:
+    repository: postgres
+    tag: "16-alpine"
+  auth:
+    username: autotest
+    password: autotest
+    database: autotest
+  persistence:
+    enabled: true
+    size: 10Gi
+    storageClass: ""   # use cluster default
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+
+# --- Redis ---
+redis:
+  enabled: true
+  image:
+    repository: redis
+    tag: "7-alpine"
+  maxmemory: 256mb
+  maxmemoryPolicy: allkeys-lru
+  persistence:
+    enabled: true
+    size: 5Gi
+    storageClass: ""
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      cpu: 200m
+      memory: 320Mi
+
+# --- API Service ---
+api:
+  enabled: true
+  image:
+    repository: autotest-api
+    tag: latest
+  replicas: 2
+  port: 8000
+  resources:
+    requests:
+      cpu: 200m
+      memory: 256Mi
+    limits:
+      cpu: 1000m
+      memory: 1Gi
+  hpa:
+    enabled: true
+    minReplicas: 2
+    maxReplicas: 10
+    targetCPUUtilization: 70
+    targetMemoryUtilization: 80
+  # Override ConfigMap values
+  env:
+    UVICORN_LOG_LEVEL: "info"
+
+# --- Worker Service ---
+worker:
+  enabled: true
+  image:
+    repository: autotest-api
+    tag: latest
+  replicas: 2
+  concurrency: 4
+  logLevel: info
+  timeLimit: 1800
+  maxTasksPerChild: 100
+  resources:
+    requests:
+      cpu: 300m
+      memory: 384Mi
+    limits:
+      cpu: 2000m
+      memory: 2Gi
+  hpa:
+    enabled: true
+    minReplicas: 2
+    maxReplicas: 20
+    targetCPUUtilization: 65
+    targetMemoryUtilization: 80
+
+# --- Ingress ---
+ingress:
+  enabled: true
+  className: nginx
+  host: autotest.example.com
+  tls:
+    enabled: true
+    secretName: autotest-tls
+    # issuer: letsencrypt-prod   # uncomment for cert-manager
+  annotations:
+    nginx.ingress.kubernetes.io/proxy-body-size: "50m"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "600"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "600"
+
+# --- Application config (env.yaml override) ---
+config:
+  logging:
+    level: INFO
+    jsonFormat: true
+  db:
+    driver: postgresql
+    poolSize: 20
+    maxOverflow: 10
+  execution:
+    mode: distributed
+  auth:
+    jwtSecret: "change-me-in-production-use-a-strong-random-key"
+    defaultAdmin:
+      username: admin
+      password: admin123
+
+# --- Secrets ---
+secrets:
+  apiKey: "autotest-k8s-internal-key-change-me"

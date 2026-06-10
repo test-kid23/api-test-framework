@@ -150,6 +150,81 @@ class WSConnectionError(ExecutionError):
         self.detail = detail
 
 
+class GrpcError(ExecutionError):
+    """gRPC 调用异常基类
+
+    Attributes:
+        service: gRPC 服务名。
+        method: 调用的方法名。
+        host: 目标地址。
+        status_code: gRPC 状态码（如有）。
+    """
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        service: str = "",
+        method: str = "",
+        host: str = "",
+        status_code: int | None = None,
+        trace_id: str = "",
+    ) -> None:
+        super().__init__(message, trace_id=trace_id)
+        self.service = service
+        self.method = method
+        self.host = host
+        self.status_code = status_code
+
+
+class GrpcConnectionError(GrpcError):
+    """gRPC 连接失败
+
+    Attributes:
+        host: 目标地址。
+    """
+
+    def __init__(self, host: str, detail: str = "", *, trace_id: str = "") -> None:
+        super().__init__(
+            f"gRPC 连接失败: {host}" + (f" — {detail}" if detail else ""),
+            host=host,
+            trace_id=trace_id,
+        )
+        self.detail = detail
+
+
+class GrpcProtoError(GrpcError):
+    """gRPC proto 文件加载/解析失败
+
+    Attributes:
+        proto_file: proto 文件路径。
+    """
+
+    def __init__(self, proto_file: str, detail: str = "", *, trace_id: str = "") -> None:
+        super().__init__(
+            f"gRPC proto 加载失败: {proto_file}" + (f" — {detail}" if detail else ""),
+            trace_id=trace_id,
+        )
+        self.proto_file = proto_file
+        self.detail = detail
+
+
+class GrpcReflectionError(GrpcError):
+    """gRPC 服务反射失败
+
+    Attributes:
+        host: 目标地址。
+    """
+
+    def __init__(self, host: str, detail: str = "", *, trace_id: str = "") -> None:
+        super().__init__(
+            f"gRPC 反射查询失败: {host}" + (f" — {detail}" if detail else ""),
+            host=host,
+            trace_id=trace_id,
+        )
+        self.detail = detail
+
+
 class RetryExhaustedError(ExecutionError):
     """重试次数耗尽
 

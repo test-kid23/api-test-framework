@@ -1,0 +1,49 @@
+🎉 AutoTest Platform has been deployed!
+
+  Namespace: {{ .Values.global.namespace }}
+  Environment: {{ .Values.global.environment }}
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  Components
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+{{- if .Values.postgres.enabled }}
+  ✓ PostgreSQL  ({{ include "autotest-platform.postgresHost" . }}:5432)
+{{- else }}
+  ✓ PostgreSQL  (external: {{ include "autotest-platform.postgresHost" . }})
+{{- end }}
+{{- if .Values.redis.enabled }}
+  ✓ Redis       ({{ include "autotest-platform.redisHost" . }}:6379)
+{{- else }}
+  ✓ Redis       (external: {{ include "autotest-platform.redisHost" . }})
+{{- end }}
+{{- if .Values.api.enabled }}
+  ✓ API         ({{ .Values.api.replicas }} replicas, port {{ .Values.api.port }})
+{{- end }}
+{{- if .Values.worker.enabled }}
+  ✓ Worker      ({{ .Values.worker.replicas }} replicas, concurrency {{ .Values.worker.concurrency }})
+{{- end }}
+{{- if .Values.ingress.enabled }}
+  ✓ Ingress     ({{ .Values.ingress.host }})
+{{- end }}
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  Access
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+{{- if .Values.ingress.enabled }}
+  URL:      https://{{ .Values.ingress.host }}
+  Swagger:  https://{{ .Values.ingress.host }}/docs
+  Health:   https://{{ .Values.ingress.host }}/health
+{{- else }}
+  Port-forward:  kubectl -n {{ .Values.global.namespace }} port-forward svc/autotest-api {{ .Values.api.port }}:{{ .Values.api.port }}
+  Swagger:       http://localhost:{{ .Values.api.port }}/docs
+  Health:        http://localhost:{{ .Values.api.port }}/health
+{{- end }}
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  Commands
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  Status:      kubectl -n {{ .Values.global.namespace }} get all
+  Logs (API):  kubectl -n {{ .Values.global.namespace }} logs -f deployment/autotest-api
+  Logs (Worker): kubectl -n {{ .Values.global.namespace }} logs -f deployment/autotest-worker
+  Upgrade:     helm upgrade autotest-platform .
+  Uninstall:   helm uninstall autotest-platform

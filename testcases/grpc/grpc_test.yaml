@@ -1,0 +1,120 @@
+# gRPC Greeter 服务测试套件
+# 前置条件：启动 gRPC 示例服务 → python testcases/grpc/server.py
+# 运行：pip install -e ".[grpc]" && pytest testcases/grpc/grpc_test.yaml -v
+
+name: "gRPC Greeter 服务测试"
+description: "测试 gRPC Greeter 服务的 SayHello / GetUser / HealthCheck 等方法"
+tags: ["grpc", "smoke"]
+priority: "P1"
+variables:
+  grpc_host: "localhost:50051"
+  proto_file: "testcases/grpc/greet.proto"
+
+cases:
+  - name: "grpc_sayhello_basic"
+    description: "基础 SayHello 调用 — 验证返回 message 字段"
+    tags: ["grpc", "P0"]
+    variables:
+      grpc_host: "localhost:50051"
+    grpc:
+      service: "greet.Greeter"
+      method: "SayHello"
+      proto_file: "{{proto_file}}"
+      host: "{{grpc_host}}"
+      body:
+        name: "CodeBuddy"
+        greeting: "Hi"
+      timeout: 10
+    expect:
+      body:
+        message:
+          contains: "Hi, CodeBuddy"
+      jsonpath:
+        $.message:
+          operator: contains
+          value: "Hi, CodeBuddy"
+    extract:
+      sayhello_message: $.message
+
+  - name: "grpc_sayhello_with_template"
+    description: "SayHello 调用 — 使用模板变量渲染 body"
+    tags: ["grpc", "P1"]
+    grpc:
+      service: "greet.Greeter"
+      method: "SayHello"
+      proto_file: "{{proto_file}}"
+      host: "{{grpc_host}}"
+      body:
+        name: "{{sayhello_message}}"
+        greeting: "Welcome"
+      timeout: 10
+    expect:
+      body:
+        message:
+          not_null: true
+      jsonpath:
+        $.message:
+          operator: contains
+          value: "Welcome"
+
+  - name: "grpc_getuser_exists"
+    description: "GetUser — 查询存在的用户 (user_id=1)"
+    tags: ["grpc", "P0"]
+    grpc:
+      service: "greet.Greeter"
+      method: "GetUser"
+      proto_file: "{{proto_file}}"
+      host: "{{grpc_host}}"
+      body:
+        user_id: 1
+      timeout: 10
+    expect:
+      body:
+        name:
+          not_null: true
+        email:
+          not_null: true
+      jsonpath:
+        $.user_id:
+          operator: eq
+          value: 1
+    extract:
+      getuser_name: $.name
+      getuser_email: $.email
+
+  - name: "grpc_healthcheck"
+    description: "HealthCheck — 健康检查"
+    tags: ["grpc", "P1"]
+    grpc:
+      service: "greet.Greeter"
+      method: "HealthCheck"
+      proto_file: "{{proto_file}}"
+      host: "{{grpc_host}}"
+      body: {}
+      timeout: 10
+    expect:
+      jsonpath:
+        $.status:
+          operator: eq
+          value: "SERVING"
+        $.version:
+          operator: not_null
+          value: null
+
+  - name: "grpc_listusers"
+    description: "ListUsers — 列出所有用户"
+    tags: ["grpc", "P1"]
+    grpc:
+      service: "greet.Greeter"
+      method: "ListUsers"
+      proto_file: "{{proto_file}}"
+      host: "{{grpc_host}}"
+      body:
+        page: 1
+        page_size: 10
+      timeout: 10
+    expect:
+      jsonpath:
+        $.total:
+          operator: gt
+          value: 0

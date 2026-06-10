@@ -1,0 +1,72 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: autotest
+
+resources:
+  - ../../base
+
+# Dev-specific patches
+patches:
+  - target:
+      kind: Deployment
+      name: autotest-api
+    patch: |
+      - op: replace
+        path: /spec/replicas
+        value: 1
+      - op: replace
+        path: /spec/template/spec/containers/0/resources/requests/cpu
+        value: 100m
+      - op: replace
+        path: /spec/template/spec/containers/0/resources/requests/memory
+        value: 128Mi
+
+  - target:
+      kind: Deployment
+      name: autotest-worker
+    patch: |
+      - op: replace
+        path: /spec/replicas
+        value: 1
+      - op: replace
+        path: /spec/template/spec/containers/0/resources/requests/cpu
+        value: 100m
+      - op: replace
+        path: /spec/template/spec/containers/0/resources/requests/memory
+        value: 128Mi
+
+  - target:
+      kind: HorizontalPodAutoscaler
+      name: autotest-api-hpa
+    patch: |
+      - op: replace
+        path: /spec/minReplicas
+        value: 1
+      - op: replace
+        path: /spec/maxReplicas
+        value: 3
+
+  - target:
+      kind: HorizontalPodAutoscaler
+      name: autotest-worker-hpa
+    patch: |
+      - op: replace
+        path: /spec/minReplicas
+        value: 1
+      - op: replace
+        path: /spec/maxReplicas
+        value: 5
+
+configMapGenerator:
+  - name: autotest-config
+    behavior: merge
+    literals:
+      - ENV=dev
+      - UVICORN_LOG_LEVEL=debug
+      - CELERY_LOG_LEVEL=debug
+      - WORKER_CONCURRENCY=2
+
+images:
+  - name: autotest-api
+    newTag: dev

@@ -1,0 +1,59 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: autotest-config
+  namespace: {{ .Values.global.namespace }}
+  labels:
+    app.kubernetes.io/name: autotest-platform
+data:
+  ENV: {{ .Values.global.environment | quote }}
+  UVICORN_LOG_LEVEL: {{ .Values.api.env.UVICORN_LOG_LEVEL | quote }}
+  UVICORN_RELOAD: "false"
+
+  PGHOST: {{ include "autotest-platform.postgresHost" . }}
+  PGPORT: "5432"
+  PGUSER: {{ .Values.postgres.auth.username | quote }}
+  PGDATABASE: {{ .Values.postgres.auth.database | quote }}
+
+  CELERY_BROKER_URL: "redis://{{ include \"autotest-platform.redisHost\" . }}:6379/0"
+  CELERY_RESULT_BACKEND: "redis://{{ include \"autotest-platform.redisHost\" . }}:6379/0"
+
+  CELERY_LOG_LEVEL: {{ .Values.worker.logLevel | quote }}
+  WORKER_CONCURRENCY: {{ .Values.worker.concurrency | quote }}
+
+  AUTH_DEFAULT_ADMIN_USERNAME: {{ .Values.config.auth.defaultAdmin.username | quote }}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: autotest-app-yaml
+  namespace: {{ .Values.global.namespace }}
+  labels:
+    app.kubernetes.io/name: autotest-platform
+data:
+  env.yaml: |
+    db:
+      driver: {{ .Values.config.db.driver }}
+      dsn: ""
+      main_db:
+        type: {{ .Values.config.db.driver }}
+        host: "${PGHOST}"
+        port: "${PGPORT}"
+        user: "${PGUSER}"
+        password: "${PGPASSWORD}"
+        database: "${PGDATABASE}"
+        pool_size: {{ .Values.config.db.poolSize }}
+        max_overflow: {{ .Values.config.db.maxOverflow }}
+    execution:
+      mode: {{ .Values.config.execution.mode }}
+      celery:
+        broker_url: "${CELERY_BROKER_URL}"
+        result_backend: "${CELERY_RESULT_BACKEND}"
+        worker_concurrency: "${WORKER_CONCURRENCY}"
+    auth:
+      default_admin:
+        username: "${AUTH_DEFAULT_ADMIN_USERNAME}"
+        password: "${AUTH_DEFAULT_ADMIN_PASSWORD}"
+    logging:
+      level: "{{ .Values.config.logging.level }}"
+      json_format: {{ .Values.config.logging.jsonFormat }}

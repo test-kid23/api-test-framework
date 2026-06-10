@@ -129,9 +129,10 @@ class TestRunner:
             mock_store=get_mock_store(),
         )
 
-        # StepExecutor 策略链（默认：WS(Async) → HTTP）
+        # StepExecutor 策略链（默认：gRPC → WS(Async) → HTTP）
         if executors is None:
             executors = [
+                self._try_create_grpc_executor(),
                 AsyncWsStepExecutor(self._template),
                 HttpStepExecutor(
                     http_client=http_client,
@@ -144,6 +145,8 @@ class TestRunner:
                     async_http_client=self._async_http_client,
                 ),
             ]
+            # 过滤掉 None（未安装 grpc 时 _try_create_grpc_executor 返回 None）
+            executors = [e for e in executors if e is not None]
         self._executors: list[StepExecutor] = executors
 
     # ── 公共属性 ─────────────────────────────────────
@@ -726,6 +729,29 @@ class TestRunner:
             logger.warning("cleanup_stage_exception", exc_info=True)
         finally:
             clear_trace_id()
+
+    def _try_create_grpc_executor(self) -> Any:
+        """尝试创建 GrpcStepExecutor（懒加载，兼容未安装 grpc 的环境）
+
+        如果 grpcio / grpcio-tools 未安装，返回 None 并记录 debug 日志，
+        不影响其他协议的执行。
+
+        Returns:
+            GrpcStepExecutor 实例或 None。
+        """
+        try:
+            import grpc  # noqa: F401
+            from framework.executors.grpc_executor import GrpcStepExecutor
+
+            return GrpcStepExecutor(
+                template_engine=self._template,
+                assertion_engine=self._assertion_engine,
+                report_adapter=self._report_adapter,
+                plugin_manager=self._plugin_manager,
+            )
+        except ImportError:
+            logger.debug("grpc_not_installed", hint="pip install auto-test-framework[grpc]")
+            return None
 
     def _build_suite_variables(self, suite: TestSuite) -> dict[str, Any]:
         """构建套件级变量（合并环境 + 套件）"""

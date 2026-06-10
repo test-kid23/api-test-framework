@@ -1,0 +1,149 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: autotest-worker
+  namespace: autotest
+  labels:
+    app.kubernetes.io/name: autotest-platform
+    app.kubernetes.io/component: worker
+spec:
+  replicas: 2
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  selector:
+    matchLabels:
+      app: autotest-worker
+  template:
+    metadata:
+      labels:
+        app: autotest-worker
+    spec:
+      initContainers:
+        - name: wait-for-postgres
+          image: busybox:1.36
+          command:
+            - sh
+            - -c
+            - |
+              until nc -z autotest-postgres 5432; do
+                echo "Waiting for PostgreSQL..."
+                sleep 2
+              done
+              echo "PostgreSQL is ready"
+        - name: wait-for-redis
+          image: busybox:1.36
+          command:
+            - sh
+            - -c
+            - |
+              until nc -z autotest-redis 6379; do
+                echo "Waiting for Redis..."
+                sleep 2
+              done
+              echo "Redis is ready"
+      containers:
+        - name: worker
+          image: autotest-api:latest
+          imagePullPolicy: IfNotPresent
+          command:
+            - celery
+            - -A
+            - worker.celery_app
+            - worker
+            - --loglevel=${CELERY_LOG_LEVEL:-info}
+            - --concurrency=${WORKER_CONCURRENCY:-4}
+            - --pool=prefork
+            - --max-tasks-per-child=100
+            - --time-limit=1800
+          envFrom:
+            - configMapRef:
+                name: autotest-config
+            - secretRef:
+                name: autotest-secret
+          livenessProbe:
+            exec:
+              command:
+                - celery
+                - -A
+                - worker.celery_app
+                - inspect
+                - ping
+                - -d
+                - celery@$(hostname)
+            initialDelaySeconds: 45
+            periodSeconds: 30
+            timeoutSeconds: 10
+            failureThreshold: 3
+          resources:
+            requests:
+              cpu: 300m
+              memory: 384Mi
+            limits:
+              cpu: 2000m
+              memory: 2Gi
+          volumeMounts:
+            - name: app-config
+              mountPath: /app/config
+              readOnly: true
+            - name: testcases
+              mountPath: /app/testcases
+              readOnly: true
+            - name: reports
+              mountPath: /app/reports
+            - name: logs
+              mountPath: /app/logs
+      volumes:
+        - name: app-config
+          configMap:
+            name: autotest-app-yaml
+        - name: testcases
+          emptyDir: {}
+        - name: reports
+          emptyDir: {}
+        - name: logs
+          emptyDir: {}
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: autotest-worker-hpa
+  namespace: autotest
+  labels:
+    app.kubernetes.io/name: autotest-platform
+    app.kubernetes.io/component: worker
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: autotest-worker
+  minReplicas: 2
+  maxReplicas: 20
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 65
+    - type: Resource
+      resource:
+        name: memory
+        target:
+          type: Utilization
+          averageUtilization: 80
+  behavior:
+    scaleDown:
+      stabilizationWindowSeconds: 300
+      policies:
+        - type: Percent
+          value: 25
+          periodSeconds: 120
+    scaleUp:
+      stabilizationWindowSeconds: 60
+      policies:
+        - type: Percent
+          value: 50
+          periodSeconds: 60

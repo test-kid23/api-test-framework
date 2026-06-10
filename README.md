@@ -1,6 +1,6 @@
 # AutoTest Framework — 企业级 API 自动化测试框架
 
-> **v2.1.0** | Python 3.12+ | pytest 8.x | httpx 0.28.x | YAML 驱动 | 结构化日志 | 策略模式引擎
+> **v2.2.0** | Python 3.12+ | pytest 8.x | httpx 0.28.x | YAML 驱动 | 结构化日志 | 策略模式引擎
 
 ## 目录
 
@@ -17,6 +17,7 @@
 - [Fixture 与 Setup/Teardown](#fixture-与-setupteardown)
 - [数据库集成](#数据库集成)
 - [WebSocket 测试](#websocket-测试)
+- [gRPC 测试](#grpc-测试)
 - [Mock 服务](#mock-服务)
 - [流量录制与回放](#流量录制与回放)
 - [智能断言与 Schema 推断](#智能断言与-schema-推断)
@@ -50,6 +51,7 @@
 | **Fixture 系统** | setup/teardown 支持 api_call / db_execute / wait / shell 四种动作 |
 | **数据库集成** | setup/teardown 中执行 SQL，从查询结果提取变量，支持 MySQL/PostgreSQL/SQLite |
 | **WebSocket 支持** | 纯异步 WS 执行器，收发消息、断言验证 |
+| **gRPC 支持** | proto 编译 + 反射双模式服务发现，可选 `[grpc]` extra 依赖，零侵入集成 |
 | **多环境切换** | `--env=staging` 一行命令切换环境 |
 | **插件系统** | 13 个生命周期钩子，优先级排序，自动发现，插件间通信 |
 | **拦截器链** | 洋葱模型请求/响应拦截，内置认证与日志拦截器 |
@@ -339,10 +341,11 @@ api-test-framework/
 │   ├── assertion/                # 断言引擎子包
 │   │   ├── engine.py             #   16 种操作符 + AssertionEngine
 │   │   └── smart.py              #   智能断言（Schema 推断 + 变更检测）
-│   ├── executors/                # 协议执行器（策略模式）
+│   ├── executors/                # 协议执行器（策略模式，3 个实现）
 │   │   ├── base.py               #   StepExecutor 抽象基类
 │   │   ├── http_executor.py      #   HTTP 步骤执行器
-│   │   └── ws_async_executor.py  #   纯异步 WebSocket 执行器
+│   │   ├── ws_async_executor.py  #   纯异步 WebSocket 执行器
+│   │   └── grpc_executor.py      #   gRPC 步骤执行器（proto/反射）
 │   ├── importers/                # 外部格式导入
 │   │   └── openapi_parser.py     #   OpenAPI 3.x Spec 解析 + 用例生成
 │   ├── interceptors/             # 请求拦截器链
@@ -402,7 +405,8 @@ api-test-framework/
 ├── testcases/                    # YAML 测试用例
 │   ├── local/                    #   本地环境用例
 │   ├── smoke/                    #   冒烟测试
-│   └── regression/               #   回归测试
+│   ├── regression/               #   回归测试
+│   └── grpc/                     #   gRPC 示例（proto + server + 用例）
 ├── assertions/                   # 自定义断言函数
 │   └── custom_checks.py
 ├── tests/                        # 框架单元测试
@@ -1066,6 +1070,137 @@ cases:
           data: '{"type": "bye"}'
       close_timeout: 3
 ```
+
+---
+
+## gRPC 测试
+
+框架通过 `GrpcStepExecutor` 支持 gRPC 接口测试，采用与 HTTP/WS 相同的策略模式实现。
+
+### 安装 gRPC 依赖
+
+gRPC 依赖设计为 optional extra，不影响框架核心功能：
+
+```bash
+# 安装 gRPC 支持
+pip install -e ".[grpc]"
+
+# 或安装全部 extras
+pip install -e ".[all]"
+```
+
+### gRPC 服务发现方式
+
+支持两种方式获取 gRPC 服务定义：
+
+| 方式 | 说明 | 适用场景 |
+|------|------|---------|
+| **Proto 文件编译** | 通过 `proto_file` + `proto_dir` 指定 `.proto` 文件，执行时自动编译为 Python pb2 模块 | 有 proto 源码的开发/测试环境 |
+| **服务反射** | 设置 `reflection: true`，运行时通过 gRPC Reflection API 自动查询服务描述符 | 无 proto 源码的生产环境 |
+
+### gRPC 用例示例
+
+```yaml
+name: gRPC Greeter 服务测试
+base_url: "http://localhost:50051"
+
+cases:
+  # ── Proto 文件模式 ──
+  - name: SayHello - proto 模式
+    grpc:
+      service: Greeter
+      method: SayHello
+      proto_file: greet.proto
+      proto_dir: testcases/grpc
+      host: localhost:50051
+      body:
+        name: "World"
+    expect:
+      status_code: 0          # gRPC 状态码，0 表示 OK
+      jsonpath:
+        $.message: "not_null"
+
+  # ── 服务反射模式 ──
+  - name: HealthCheck - 反射模式
+    grpc:
+      service: Greeter
+      method: HealthCheck
+      host: localhost:50051
+      reflection: true
+      body:
+        service_name: "greeter"
+    expect:
+      status_code: 0
+      jsonpath:
+        $.status: "SERVING"
+
+  # ── 带模板变量 ──
+  - name: GetUser
+    grpc:
+      service: Greeter
+      method: GetUser
+      proto_file: greet.proto
+      proto_dir: testcases/grpc
+      host: "{{grpc_host}}"
+      body:
+        user_id: "{{user_id}}"
+    expect:
+      status_code: 0
+      jsonpath:
+        $.name: "not_null"
+    extract:
+      user_email: $.email
+```
+
+### gRPC 配置字段
+
+| 字段 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `service` | string | ✅ | gRPC 服务名（proto 中定义的服务名） |
+| `method` | string | ✅ | gRPC 方法名 |
+| `host` | string | ✅ | gRPC 服务地址，格式 `host:port` |
+| `proto_file` | string | 条件必填 | proto 文件名（非反射模式必填） |
+| `proto_dir` | string | 条件必填 | proto 文件所在目录（非反射模式必填） |
+| `reflection` | bool | 否 | 是否使用 gRPC 反射，默认 `false` |
+| `body` | dict | 否 | 请求消息体（自动映射到 protobuf 字段） |
+| `metadata` | dict | 否 | gRPC metadata（如认证 token） |
+| `timeout` | int | 否 | 请求超时秒数，默认 30 |
+| `tls` | bool | 否 | 是否启用 TLS，默认 `false` |
+| `tls_ca_cert` | string | 否 | TLS CA 证书路径 |
+
+### 断言说明
+
+gRPC 执行器通过 `_to_assertable()` 适配器将 `GrpcResult` 转换为 HTTP-like 对象，复用现有断言引擎：
+
+- **`status_code`**: gRPC 状态码（0=OK, 14=UNAVAILABLE, 等）
+- **`jsonpath`**: 对响应消息体使用 JSONPath 断言（响应已序列化为 JSON）
+- **`elapsed_ms`**: 请求耗时（毫秒）
+
+### 启动示例 gRPC 服务
+
+```bash
+# 编译 proto 文件
+python testcases/grpc/compile_proto.py
+
+# 启动示例服务
+python testcases/grpc/server.py
+
+# 运行 gRPC 测试
+pytest testcases/grpc/grpc_test.yaml -v
+```
+
+### 策略模式集成
+
+gRPC 执行器自动注册到 `TestRunner` 的 executor 链中（在 WS 和 HTTP 之前），通过 `supports()` 方法识别 `grpc_config is not None` 的用例：
+
+```
+StepExecutor 路由链:
+  GrpcStepExecutor  → WS 用例
+  WsStepExecutor     → HTTP 用例
+  HttpStepExecutor   → 默认兜底
+```
+
+未安装 `[grpc]` 依赖时，`GrpcStepExecutor` 自动返回 `None`，不影响其他协议的执行。
 
 ---
 
@@ -1782,7 +1917,7 @@ docker compose -f docker-compose.test.yml up
 
 | 模式 | 应用场景 | 说明 |
 |------|---------|------|
-| 策略模式 | `StepExecutor` | 协议执行器可插拔，新增协议无需改 Runner |
+| 策略模式 | `StepExecutor` | 协议执行器可插拔（HTTP/WS/gRPC），新增协议无需改 Runner |
 | 工厂模式 | `create_report_adapter()` | 根据配置创建报告适配器 |
 | 观察者模式 | `PluginBase` + `PluginManager` | 13 个生命周期钩子，按优先级分发 |
 | 洋葱模型 | `RequestInterceptor` | 请求/响应拦截器链式处理 |
@@ -1798,7 +1933,7 @@ YAML 文件 → YamlCollector 收集 → YamlFunction(pytest.Function) → runne
     → PluginManager.dispatch("setup", phase="before")
     → FixtureLoader.run_setup()
     → PluginManager.dispatch("setup", phase="after")
-    → StepExecutor 策略路由（HttpStepExecutor / WsStepExecutor）
+    → StepExecutor 策略路由（GrpcStepExecutor / WsStepExecutor / HttpStepExecutor）
       → 模板渲染请求
       → PluginManager.dispatch_chain("request")  ← 拦截器链
       → 发送 HTTP 请求
@@ -1916,7 +2051,7 @@ npm run build
 
 ## 开发计划
 
-当前版本 **v2.1.0**，架构评分 **9.05/10**，37/45 任务已完成。
+当前版本 **v2.2.0**，架构评分 **9.20/10**，44/44 任务已完成（四个阶段全部完工）。
 
 | 阶段 | 状态 | 目标版本 |
 |------|------|---------|
@@ -1925,7 +2060,7 @@ npm run build
 | Phase 1: 架构解耦与核心重构 | ✅ 已完成 | v1.2.0 |
 | Phase 2: 引擎服务化与持久化 | ✅ 已完成 | v2.0.0 |
 | Phase 3: 平台化基础建设 | ✅ 已完成 | v2.1.0 |
-| Phase 4: 完整测试平台 | ✅ 大部分完成 | v2.1.0 |
+| Phase 4: 完整测试平台 | ✅ 已完成 | v2.2.0 |
 | Phase 5: 平台完善与生产化 | ⬜ 规划中 | v3.0.0 |
 
 > 详细计划见 [`docs/development-plan.md`](docs/development-plan.md)

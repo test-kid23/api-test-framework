@@ -1,0 +1,101 @@
+{{- if .Values.redis.enabled }}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: redis-pvc
+  namespace: {{ .Values.global.namespace }}
+  labels:
+    app.kubernetes.io/name: autotest-platform
+    app.kubernetes.io/component: cache
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: {{ .Values.redis.persistence.size }}
+  {{- if .Values.redis.persistence.storageClass }}
+  storageClassName: {{ .Values.redis.persistence.storageClass }}
+  {{- end }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "autotest-platform.redisHost" . }}
+  namespace: {{ .Values.global.namespace }}
+  labels:
+    app.kubernetes.io/name: autotest-platform
+    app.kubernetes.io/component: cache
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: {{ include "autotest-platform.redisHost" . }}
+  template:
+    metadata:
+      labels:
+        app: {{ include "autotest-platform.redisHost" . }}
+    spec:
+      containers:
+        - name: redis
+          image: {{ .Values.global.imageRegistry }}/{{ .Values.redis.image.repository }}:{{ .Values.redis.image.tag }}
+          command:
+            - redis-server
+            - --save
+            - "60"
+            - "1"
+            - --loglevel
+            - warning
+            - --maxmemory
+            - {{ .Values.redis.maxmemory }}
+            - --maxmemory-policy
+            - {{ .Values.redis.maxmemoryPolicy }}
+          ports:
+            - containerPort: 6379
+              protocol: TCP
+          livenessProbe:
+            exec:
+              command:
+                - redis-cli
+                - ping
+            initialDelaySeconds: 15
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 3
+          readinessProbe:
+            exec:
+              command:
+                - redis-cli
+                - ping
+            initialDelaySeconds: 5
+            periodSeconds: 5
+            timeoutSeconds: 3
+          resources:
+            {{- toYaml .Values.redis.resources | nindent 12 }}
+          volumeMounts:
+            - name: redis-data
+              mountPath: /data
+      volumes:
+        - name: redis-data
+          persistentVolumeClaim:
+            claimName: redis-pvc
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "autotest-platform.redisHost" . }}
+  namespace: {{ .Values.global.namespace }}
+  labels:
+    app.kubernetes.io/name: autotest-platform
+    app.kubernetes.io/component: cache
+spec:
+  type: ClusterIP
+  selector:
+    app: {{ include "autotest-platform.redisHost" . }}
+  ports:
+    - name: redis
+      port: 6379
+      targetPort: 6379
+      protocol: TCP
+{{- end }}

@@ -18,6 +18,7 @@ from framework.models import (
     DBAssertItem,
     ExtractItem,
     FixtureAction,
+    GrpcConfig,
     HttpMethod,
     HttpRequest,
     TestCase,
@@ -173,6 +174,7 @@ class YAMLParser:
             variables=raw.get("variables", {}),
             request=raw.get("request"),
             ws_config=raw.get("ws_config"),
+            grpc=raw.get("grpc"),
             expect=raw.get("expect", {}),
             extract=raw.get("extract", {}),
             db_assert=raw.get("db_assert", []),
@@ -228,6 +230,10 @@ class YAMLParser:
         # 解析 WebSocket 配置
         if parsed.ws_config:
             case.ws_config = self._parse_ws_config(parsed.ws_config)
+
+        # 解析 gRPC 配置
+        if parsed.grpc:
+            case.grpc_config = self._parse_grpc_config(parsed.grpc)
 
         # 解析断言
         case.assertions = self._parse_assertions(parsed.expect)
@@ -291,6 +297,22 @@ class YAMLParser:
             timeout=raw.get("timeout", 30),
             messages=messages,
             close_after=raw.get("close_after", True),
+        )
+
+    def _parse_grpc_config(self, raw: dict[str, Any]) -> GrpcConfig:
+        """解析 gRPC 配置"""
+        return GrpcConfig(
+            service=raw.get("service", ""),
+            method=raw.get("method", ""),
+            proto_file=raw.get("proto_file", ""),
+            proto_dir=raw.get("proto_dir", ""),
+            host=raw.get("host", "localhost:50051"),
+            body=raw.get("body", {}),
+            metadata=raw.get("metadata", {}),
+            timeout=raw.get("timeout"),
+            tls=raw.get("tls", False),
+            tls_ca_cert=raw.get("tls_ca_cert", ""),
+            reflection=raw.get("reflection", False),
         )
 
     def _parse_assertions(self, expect: dict[str, Any]) -> list[AssertItem]:

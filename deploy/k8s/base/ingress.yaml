@@ -1,0 +1,64 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: autotest-ingress
+  namespace: autotest
+  labels:
+    app.kubernetes.io/name: autotest-platform
+    app.kubernetes.io/component: ingress
+  annotations:
+    # --- Common annotations ---
+    # nginx.ingress.kubernetes.io/rewrite-target: /
+
+    # --- TLS redirect ---
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+
+    # --- Proxy timeouts (execution triggers may be long-running) ---
+    nginx.ingress.kubernetes.io/proxy-connect-timeout: "60"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "600"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "600"
+
+    # --- Body size (for file uploads) ---
+    nginx.ingress.kubernetes.io/proxy-body-size: "50m"
+
+    # --- WebSocket support ---
+    nginx.ingress.kubernetes.io/proxy-http-version: "1.1"
+    nginx.ingress.kubernetes.io/websocket-services: "autotest-api"
+
+    # --- CORS ---
+    nginx.ingress.kubernetes.io/enable-cors: "true"
+    nginx.ingress.kubernetes.io/cors-allow-origin: "*"
+
+    # --- Cert Manager (uncomment when using cert-manager) ---
+    # cert-manager.io/cluster-issuer: "letsencrypt-prod"
+spec:
+  ingressClassName: nginx
+  tls:
+    - hosts:
+        - autotest.example.com
+      secretName: autotest-tls
+  rules:
+    - host: autotest.example.com
+      http:
+        paths:
+          - path: /ws
+            pathType: Prefix
+            backend:
+              service:
+                name: autotest-api
+                port:
+                  number: 8000
+          - path: /api/v1/executions/trigger
+            pathType: Exact
+            backend:
+              service:
+                name: autotest-api
+                port:
+                  number: 8000
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: autotest-api
+                port:
+                  number: 8000

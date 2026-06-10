@@ -1,0 +1,73 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: autotest-config
+  namespace: autotest
+  labels:
+    app.kubernetes.io/name: autotest-platform
+data:
+  # --- Application ---
+  ENV: "production"
+  UVICORN_LOG_LEVEL: "info"
+  UVICORN_RELOAD: "false"
+
+  # --- PostgreSQL ---
+  PGHOST: "autotest-postgres"
+  PGPORT: "5432"
+  PGUSER: "autotest"
+  PGDATABASE: "autotest"
+
+  # --- Redis / Celery ---
+  CELERY_BROKER_URL: "redis://autotest-redis:6379/0"
+  CELERY_RESULT_BACKEND: "redis://autotest-redis:6379/0"
+
+  # --- Worker ---
+  CELERY_LOG_LEVEL: "info"
+  WORKER_CONCURRENCY: "4"
+
+  # --- Database DSN (assembled from PG* vars at startup) ---
+  # AUTOTEST_DB_URL is set in the Deployment via envFrom + secret
+
+  # --- Auth defaults (override via Secret in production) ---
+  AUTH_DEFAULT_ADMIN_USERNAME: "admin"
+
+---
+# Application-level YAML config injected via volume mount.
+# The ConfigLoader reads config/config.yaml → config/env.yaml → env vars.
+# We embed an env.yaml override so the pod can bootstrap without
+# requiring a separate ConfigMap for every YAML key.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: autotest-app-yaml
+  namespace: autotest
+  labels:
+    app.kubernetes.io/name: autotest-platform
+data:
+  env.yaml: |
+    # K8s environment override – merged on top of config/config.yaml
+    db:
+      driver: postgresql
+      dsn: ""   # built from PG* env vars
+      main_db:
+        type: postgresql
+        host: "${PGHOST}"
+        port: "${PGPORT}"
+        user: "${PGUSER}"
+        password: "${PGPASSWORD}"
+        database: "${PGDATABASE}"
+        pool_size: 20
+        max_overflow: 10
+    execution:
+      mode: distributed
+      celery:
+        broker_url: "${CELERY_BROKER_URL}"
+        result_backend: "${CELERY_RESULT_BACKEND}"
+        worker_concurrency: "${WORKER_CONCURRENCY}"
+    auth:
+      default_admin:
+        username: "${AUTH_DEFAULT_ADMIN_USERNAME}"
+        password: "${AUTH_DEFAULT_ADMIN_PASSWORD}"
+    logging:
+      level: "INFO"
+      json_format: true
