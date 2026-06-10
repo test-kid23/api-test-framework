@@ -1,0 +1,3 @@
+2026-06-10 06:15:55 [info     ] recording_started              session_id=79fa400d102b session_name=test_session
+2026-06-10 06:15:55 [info     ] har_saved                      entries=0 path=recordings/test_session_79fa400d102b.har
+2026-06-10 06:15:55 [info     ] recording_stopped              duration_s=0.0 entry_count=0 har_path=recordings/test_session_79fa400d102b.har session_id=79fa400d102b
