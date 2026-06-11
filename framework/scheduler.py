@@ -305,7 +305,14 @@ async def fire_schedule(schedule_id: str) -> None:
         await session.flush()
 
         # 更新调度运行时间
-        schedule_model.last_run_at = datetime.now(timezone.utc)
+        now = datetime.now(timezone.utc)
+        schedule_model.last_run_at = now
+
+        # 同步 APScheduler 计算的下次运行时间
+        job = scheduler._apscheduler.get_job(schedule_id)
+        if job is not None and job.next_run_time is not None:
+            schedule_model.next_run_at = job.next_run_time
+
         await session.commit()
 
         # 发送 Celery 任务

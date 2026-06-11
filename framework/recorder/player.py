@@ -14,6 +14,7 @@ from typing import Any
 from framework.models import BodyType, HttpMethod, HttpRequest
 from framework.recorder.differ import DiffEngine, DiffReport
 from framework.recorder.har_models import HAR, HAREntry
+from framework.recorder.var_detector import VarDetector
 from framework.utils.logger import Logger
 
 logger = Logger.get("recorder.player")
@@ -93,6 +94,8 @@ class PlaybackReport:
     results: list[PlaybackResult] = field(default_factory=list)
     duration_seconds: float = 0.0
     summary: str = ""
+    detected_vars: list[dict[str, Any]] = field(default_factory=list)
+    """动态变量检测结果（仅在 enable_var_detection=True 时有值）"""
 
     @property
     def pass_rate(self) -> float:
@@ -101,7 +104,7 @@ class PlaybackReport:
         return round(self.matched_count / self.total_entries * 100, 2)
 
     def to_dict(self) -> dict[str, Any]:
-        return {
+        result: dict[str, Any] = {
             "har_file": self.har_file,
             "total_entries": self.total_entries,
             "matched_count": self.matched_count,
@@ -112,6 +115,9 @@ class PlaybackReport:
             "summary": self.summary,
             "results": [r.to_dict() for r in self.results],
         }
+        if self.detected_vars:
+            result["detected_vars"] = self.detected_vars
+        return result
 
 
 class HARPlayer:
@@ -140,6 +146,7 @@ class HARPlayer:
         client: Any,
         diff_engine: DiffEngine | None = None,
         base_url: str = "",
+        enable_var_detection: bool = False,
     ) -> None:
         """初始化回放引擎。
 
@@ -147,10 +154,13 @@ class HARPlayer:
             client: HttpClient 实例。
             diff_engine: 差异引擎，为 None 时使用默认配置。
             base_url: 基础 URL，用于替换 HAR 中记录的 URL schema+host。
+            enable_var_detection: 是否启用动态变量自动检测和替换。
         """
         self._client = client
         self._diff_engine = diff_engine or DiffEngine()
         self._base_url = base_url
+        self._var_detector = VarDetector() if enable_var_detection else None
+        self._detected_vars: list[dict[str, Any]] = []
 
     def replay(
         self,
@@ -263,6 +273,7 @@ class HARPlayer:
             results=results,
             duration_seconds=round(duration, 2),
             summary=" | ".join(summary_parts),
+            detected_vars=list(self._detected_vars),
         )
 
         logger.info(
@@ -426,6 +437,111 @@ class HARPlayer:
 
         return result
 
+    def _apply_var_replacements(
+        self,
+        url: str,
+        headers: dict[str, str],
+        params: dict[str, Any],
+        body: Any,
+    ) -> tuple[str, dict[str, str], dict[str, Any], Any, list[dict[str, Any]]]:
+        """对请求应用动态变量检测和替换。
+
+        Args:
+            url: 请求 URL。
+            headers: 请求头字典。
+            params: 查询参数字典。
+            body: 请求体。
+
+        Returns:
+            (替换后的 url, 替换后的 headers, 替换后的 params, 替换后的 body, 检测结果列表)。
+        """
+        if self._var_detector is None:
+            return url, headers, params, body, []
+
+        detected = self._var_detector.detect_entry(
+            url=url,
+            headers=headers,
+            query_params={k: str(v) for k, v in params.items()},
+            body=body,
+        )
+
+        if not detected:
+            return url, headers, params, body, []
+
+        replacements = self._var_detector.generate_replacements(detected)
+        logger.info(
+            "var_detection_results",
+            url=url,
+            detected_count=len(detected),
+            replacement_count=len(replacements),
+        )
+
+        # 替换 URL
+        new_url = url
+        for original, template in replacements.items():
+            new_url = new_url.replace(original, template)
+
+        # 替换 headers
+        new_headers = dict(headers)
+        for key, val in list(new_headers.items()):
+            if val in replacements:
+                new_headers[key] = replacements[val]
+
+        # 替换 params
+        new_params = dict(params)
+        for key, val in list(new_params.items()):
+            val_str = str(val)
+            if val_str in replacements:
+                new_params[key] = replacements[val_str]
+
+        # 递归替换 body
+        new_body = self._replace_in_body(body, replacements)
+
+        detected_dicts = [
+            {
+                "location": v.location,
+                "key": v.key,
+                "original_value": v.original_value,
+                "template": v.template,
+                "pattern_name": v.pattern_name,
+            }
+            for v in detected
+        ]
+
+        return new_url, new_headers, new_params, new_body, detected_dicts
+
+    def _replace_in_body(self, body: Any, replacements: dict[str, str]) -> Any:
+        """递归替换请求体中的动态值。
+
+        Args:
+            body: 请求体（dict/list/str）。
+            replacements: 替换映射。
+
+        Returns:
+            替换后的请求体。
+        """
+        if isinstance(body, dict):
+            return {
+                k: (
+                    replacements.get(v, v)
+                    if isinstance(v, str) and v in replacements
+                    else self._replace_in_body(v, replacements)
+                )
+                for k, v in body.items()
+            }
+        elif isinstance(body, list):
+            return [
+                (
+                    replacements.get(item, item)
+                    if isinstance(item, str) and item in replacements
+                    else self._replace_in_body(item, replacements)
+                )
+                for item in body
+            ]
+        elif isinstance(body, str) and body in replacements:
+            return replacements[body]
+        return body
+
     def _replay_entry(self, index: int, entry: HAREntry) -> PlaybackResult:
         """回放单个 HAR 条目。"""
         if entry.request is None:
@@ -486,6 +602,14 @@ class HARPlayer:
                     else:
                         body = text
                         body_type = BodyType.RAW
+
+            # ── 动态变量检测和替换 ──
+            detected_vars: list[dict[str, Any]] = []
+            if self._var_detector is not None:
+                url, headers, params, body, detected_vars = self._apply_var_replacements(
+                    url, headers, params, body
+                )
+                self._detected_vars.extend(detected_vars)
 
             # 从完整 URL 提取路径
             from urllib.parse import urlparse, parse_qs

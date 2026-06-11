@@ -1,9 +1,11 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { useTranslation } from "react-i18next";
 import { useAppStore } from "@/store/appStore";
 import { useAuthStore } from "@/store/authStore";
 import { usePermission } from "@/hooks/usePermission";
 import { ChangePasswordDialog } from "@/components/auth/ChangePasswordDialog";
+import { LanguageSwitcher } from "@/components/LanguageSwitcher";
 import { Menu, Search, ChevronDown, Settings, Sun, Moon, Monitor, LogOut, Key } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
@@ -25,12 +27,12 @@ import {
 } from "@/components/ui/command";
 
 const quickLinks = [
-  { label: "用例管理", to: "/cases", shortcut: "C" },
-  { label: "套件管理", to: "/suites", shortcut: "S" },
-  { label: "执行历史", to: "/executions", shortcut: "E" },
-  { label: "报告看板", to: "/dashboard", shortcut: "D" },
-  { label: "环境管理", to: "/environments", shortcut: "V" },
-  { label: "定时调度", to: "/schedules", shortcut: "T" },
+  { label: "sidebar:caseManagement", to: "/cases", shortcut: "C" },
+  { label: "sidebar:suiteManagement", to: "/suites", shortcut: "S" },
+  { label: "sidebar:executionHistory", to: "/executions", shortcut: "E" },
+  { label: "sidebar:dashboard", to: "/dashboard", shortcut: "D" },
+  { label: "sidebar:environmentManagement", to: "/environments", shortcut: "V" },
+  { label: "sidebar:scheduledTasks", to: "/schedules", shortcut: "T" },
 ];
 
 const roleLabels: Record<string, string> = {
@@ -40,6 +42,7 @@ const roleLabels: Record<string, string> = {
 };
 
 export function Header() {
+  const { t } = useTranslation();
   const toggleSidebar = useAppStore((s) => s.toggleSidebar);
   const toggleMobileSidebar = useAppStore((s) => s.toggleMobileSidebar);
   const selectedEnv = useAppStore((s) => s.selectedEnv);
@@ -82,7 +85,7 @@ export function Header() {
     }
   };
 
-  const displayName = user?.username || "用户";
+  const displayName = user?.username || "User";
   const roleLabel = roleLabels[user?.role || ""] || user?.role || "";
   const initial = displayName.charAt(0).toUpperCase();
 
@@ -120,7 +123,7 @@ export function Header() {
             onClick={() => setCmdOpen(true)}
           >
             <Search className="h-4 w-4" />
-            <span className="text-xs">搜索...</span>
+            <span className="text-xs">{t("common.search")}...</span>
             <kbd className="ml-8 pointer-events-none inline-flex h-5 select-none items-center gap-0.5 rounded border bg-muted px-1.5 font-mono text-[10px] font-medium text-muted-foreground">
               ⌘K
             </kbd>
@@ -128,12 +131,15 @@ export function Header() {
         </div>
 
         <div className="flex items-center gap-3">
+          {/* Language Switcher */}
+          <LanguageSwitcher />
+
           {/* Theme toggle */}
           <Button
             variant="ghost"
             size="icon"
             onClick={cycleTheme}
-            title={`当前: ${theme === "light" ? "浅色" : theme === "dark" ? "深色" : "跟随系统"}`}
+            title={`${theme === "light" ? "Light" : theme === "dark" ? "Dark" : "System"}`}
           >
             <ThemeIcon className="h-4 w-4" />
           </Button>
@@ -174,18 +180,18 @@ export function Header() {
               <DropdownMenuSeparator />
               <DropdownMenuItem onClick={() => setPwdDialogOpen(true)}>
                 <Key className="mr-2 h-4 w-4" />
-                修改密码
+                {t("auth.changePassword")}
               </DropdownMenuItem>
               {isAdmin && (
                 <DropdownMenuItem onClick={() => navigate("/environments")}>
                   <Settings className="mr-2 h-4 w-4" />
-                  系统设置
+                  {t("sidebar:systemSettings")}
                 </DropdownMenuItem>
               )}
               <DropdownMenuSeparator />
               <DropdownMenuItem onClick={handleLogout} className="text-destructive focus:text-destructive">
                 <LogOut className="mr-2 h-4 w-4" />
-                退出登录
+                {t("auth.logout")}
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
@@ -194,10 +200,10 @@ export function Header() {
 
       {/* ⌘K Command Dialog */}
       <CommandDialog open={cmdOpen} onOpenChange={setCmdOpen}>
-        <CommandInput placeholder="搜索页面..." />
+        <CommandInput placeholder={t("sidebar:searchPages")} />
         <CommandList>
-          <CommandEmpty>未找到结果。</CommandEmpty>
-          <CommandGroup heading="导航">
+          <CommandEmpty>{t("common:noData")}</CommandEmpty>
+          <CommandGroup heading={t("sidebar:systemSettings")}>
             {quickLinks.map((link) => (
               <CommandItem
                 key={link.to}
@@ -206,9 +212,9 @@ export function Header() {
                   setCmdOpen(false);
                 }}
               >
-                {link.label}
+                {t(link.label)}
                 <span className="ml-auto text-xs text-muted-foreground">
-                  快捷键 ⌘+{link.shortcut}
+                  ⌘+{link.shortcut}
                 </span>
               </CommandItem>
             ))}

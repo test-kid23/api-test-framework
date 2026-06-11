@@ -1,0 +1,55 @@
+﻿python : D:\Python311\site-packages\pytest_asyncio\plugin.py:217: PytestDeprecationWarning: The configuration option "a
+syncio_default_fixture_loop_scope" is unset.
+所在位置 行:1 字符: 164
++ ... ing]::UTF8; python -m pytest d:/AAA1/apitestframework/tests/framework ...
++                 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (D:\Python311\si...cope" is unset.:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+The event loop scope for asynchronous fixtures will default to the fixture caching scope. Future versions of pytest-asy
+ncio will default the loop scope for asynchronous fixtures to function scope. Set the default fixture loop scope explic
+itly in order to avoid unexpected behavior in the future. Valid fixture loop scopes are: "function", "class", "module",
+ "package", "session"
+
+  warnings.warn(PytestDeprecationWarning(_DEFAULT_FIXTURE_LOOP_SCOPE_UNSET))
+============================= test session starts =============================
+collecting ... collected 36 items
+
+tests/framework/test_p2_batch2.py::TestApplyProjectFilter::test_admin_returns_stmt_unchanged PASSED [  2%]
+tests/framework/test_p2_batch2.py::TestApplyProjectFilter::test_user_with_projects_adds_in_filter PASSED [  5%]
+tests/framework/test_p2_batch2.py::TestApplyProjectFilter::test_user_without_projects_adds_null_filter PASSED [  8%]
+tests/framework/test_p2_batch2.py::TestApplyProjectFilter::test_via_model_filter PASSED [ 11%]
+tests/framework/test_p2_batch2.py::TestBuildProjectCondition::test_none_returns_empty_string PASSED [ 13%]
+tests/framework/test_p2_batch2.py::TestBuildProjectCondition::test_empty_list_returns_null_only PASSED [ 16%]
+tests/framework/test_p2_batch2.py::TestBuildProjectCondition::test_list_with_ids_returns_in_and_null PASSED [ 19%]
+tests/framework/test_p2_batch2.py::TestBuildProjectIdsFilter::test_admin_returns_none PASSED [ 22%]
+tests/framework/test_p2_batch2.py::TestBuildProjectIdsFilter::test_viewer_with_projects_returns_uuids PASSED [ 25%]
+tests/framework/test_p2_batch2.py::TestBuildProjectIdsFilter::test_viewer_without_projects_returns_empty_list PASSED [ 27%]
+tests/framework/test_p2_batch2.py::TestCreateRefreshToken::test_creates_valid_jwt_with_type_refresh PASSED [ 30%]
+tests/framework/test_p2_batch2.py::TestCreateRefreshToken::test_refresh_token_longer_expiry_than_access PASSED [ 33%]
+tests/framework/test_p2_batch2.py::TestDecodeRefreshToken::test_decodes_valid_refresh_token PASSED [ 36%]
+tests/framework/test_p2_batch2.py::TestDecodeRefreshToken::test_raises_on_wrong_token_type PASSED [ 38%]
+tests/framework/test_p2_batch2.py::TestDecodeRefreshToken::test_raises_on_expired_token PASSED [ 41%]
+tests/framework/test_p2_batch2.py::TestTokenResponseSchema::test_token_response_has_refresh_token_field PASSED [ 44%]
+tests/framework/test_p2_batch2.py::TestTokenResponseSchema::test_token_response_refresh_token_optional PASSED [ 47%]
+tests/framework/test_p2_batch2.py::TestTokenResponseSchema::test_refresh_token_request_schema PASSED [ 50%]
+tests/framework/test_p2_batch2.py::TestTokenResponseSchema::test_refresh_token_request_requires_field PASSED [ 52%]
+tests/framework/test_p2_batch2.py::TestMockRuleModel::test_model_tablename PASSED [ 55%]
+tests/framework/test_p2_batch2.py::TestMockRuleModel::test_model_has_all_fields PASSED [ 58%]
+tests/framework/test_p2_batch2.py::TestMockRuleModel::test_model_repr PASSED [ 61%]
+tests/framework/test_p2_batch2.py::TestMockRuleModel::test_model_defaults PASSED [ 63%]
+tests/framework/test_p2_batch2.py::TestMockRuleRepository::test_model_class_set PASSED [ 66%]
+tests/framework/test_p2_batch2.py::TestMockRuleRepository::test_list_all_enabled_query PASSED [ 69%]
+tests/framework/test_p2_batch2.py::TestMockRuleMigration::test_migration_file_exists PASSED [ 72%]
+tests/framework/test_p2_batch2.py::TestMockRuleMigration::test_migration_has_upgrade_downgrade PASSED [ 75%]
+tests/framework/test_p2_batch2.py::TestMockRuleMigration::test_migration_creates_table PASSED [ 77%]
+tests/framework/test_p2_batch2.py::TestMockRuleStoreDBLoad::test_load_from_db_clears_existing PASSED [ 80%]
+tests/framework/test_p2_batch2.py::TestMockRuleStoreDBLoad::test_load_from_db_empty PASSED [ 83%]
+tests/framework/test_p2_batch2.py::TestMockRuleStoreDBLoad::test_load_from_db_preserves_disabled_state PASSED [ 86%]
+tests/framework/test_p2_batch2.py::TestT19Integration::test_full_refresh_flow PASSED [ 88%]
+tests/framework/test_p2_batch2.py::TestT20Integration::test_model_to_dict_includes_all_fields PASSED [ 91%]
+tests/framework/test_p2_batch2.py::TestT20Integration::test_mock_rule_model_registered_in_init PASSED [ 94%]
+tests/framework/test_p2_batch2.py::TestT20Integration::test_mock_rule_repo_registered_in_init PASSED [ 97%]
+tests/framework/test_p2_batch2.py::TestT20Integration::test_mock_rule_repo_list_by_project_method PASSED [100%]
+
+============================= 36 passed in 0.67s ==============================

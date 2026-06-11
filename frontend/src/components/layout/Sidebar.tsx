@@ -1,4 +1,5 @@
 import { NavLink } from "react-router-dom";
+import { useTranslation } from "react-i18next";
 import { cn } from "@/lib/utils";
 import {
   FileText,
@@ -22,54 +23,56 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { Button } from "@/components/ui/button";
 
 interface NavGroup {
-  label: string;
+  labelKey: string;
   items: {
     to: string;
-    label: string;
+    labelKey: string;
     icon: React.ComponentType<{ className?: string }>;
+    adminOnly?: boolean;
   }[];
 }
 
 const navGroups: NavGroup[] = [
   {
-    label: "测试管理",
+    labelKey: "sidebar:testManagement",
     items: [
-      { to: "/cases", label: "用例管理", icon: FileText },
-      { to: "/suites", label: "套件管理", icon: Package },
-      { to: "/executions", label: "执行历史", icon: Play },
+      { to: "/cases", labelKey: "sidebar:caseManagement", icon: FileText },
+      { to: "/suites", labelKey: "sidebar:suiteManagement", icon: Package },
+      { to: "/executions", labelKey: "sidebar:executionHistory", icon: Play },
     ],
   },
   {
-    label: "数据分析",
+    labelKey: "sidebar:dataAnalysis",
     items: [
-      { to: "/dashboard", label: "报告看板", icon: BarChart3 },
-      { to: "/coverage", label: "覆盖率分析", icon: Target },
+      { to: "/dashboard", labelKey: "sidebar:dashboard", icon: BarChart3 },
+      { to: "/coverage", labelKey: "sidebar:coverageAnalysis", icon: Target },
     ],
   },
   {
-    label: "测试工具",
+    labelKey: "sidebar:testTools",
     items: [
-      { to: "/mocks", label: "Mock 规则", icon: Server },
-      { to: "/recorder", label: "流量录制", icon: Radio },
-      { to: "/smart-assertions", label: "智能断言", icon: Sparkles },
+      { to: "/mocks", labelKey: "sidebar:mockRules", icon: Server },
+      { to: "/recorder", labelKey: "sidebar:trafficRecorder", icon: Radio },
+      { to: "/smart-assertions", labelKey: "sidebar:smartAssertions", icon: Sparkles },
     ],
   },
   {
-    label: "系统设置",
+    labelKey: "sidebar:systemSettings",
     items: [
-      { to: "/environments", label: "环境管理", icon: Settings },
-      { to: "/schedules", label: "定时调度", icon: Clock },
+      { to: "/environments", labelKey: "sidebar:environmentManagement", icon: Settings },
+      { to: "/schedules", labelKey: "sidebar:scheduledTasks", icon: Clock },
     ],
   },
   {
-    label: "权限管理",
+    labelKey: "sidebar:permissionManagement",
     items: [
-      { to: "/users", label: "用户管理", icon: Users, adminOnly: true },
+      { to: "/users", labelKey: "sidebar:userManagement", icon: Users, adminOnly: true },
     ],
   },
 ];
 
 export function Sidebar() {
+  const { t } = useTranslation();
   const sidebarOpen = useAppStore((s) => s.sidebarOpen);
   const toggleSidebar = useAppStore((s) => s.toggleSidebar);
   const currentUser = useAuthStore((s) => s.user);
@@ -114,10 +117,10 @@ export function Sidebar() {
       {/* Navigation */}
       <nav className="flex-1 space-y-4 overflow-y-auto p-2">
         {visibleGroups.map((group) => (
-          <div key={group.label}>
+          <div key={group.labelKey}>
             {sidebarOpen && (
               <h3 className="mb-1 px-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                {group.label}
+                {t(group.labelKey)}
               </h3>
             )}
             <div className="space-y-0.5">
@@ -136,7 +139,7 @@ export function Sidebar() {
                     }
                   >
                     <item.icon className="h-5 w-5 flex-shrink-0" />
-                    <span className="ml-3">{item.label}</span>
+                    <span className="ml-3">{t(item.labelKey)}</span>
                   </NavLink>
                 ) : (
                   <Tooltip key={item.to} delayDuration={0}>
@@ -156,7 +159,7 @@ export function Sidebar() {
                       </NavLink>
                     </TooltipTrigger>
                     <TooltipContent side="right" className="ml-1">
-                      {item.label}
+                      {t(item.labelKey)}
                     </TooltipContent>
                   </Tooltip>
                 )
@@ -182,7 +185,7 @@ export function Sidebar() {
               !sidebarOpen && "rotate-180"
             )}
           />
-          {sidebarOpen && <span className="ml-2 text-xs">收起菜单</span>}
+          {sidebarOpen && <span className="ml-2 text-xs">{t("sidebar:collapse")}</span>}
         </Button>
       </div>
     </aside>

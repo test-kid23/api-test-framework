@@ -1,6 +1,8 @@
 """Mock 规则存储 — 线程安全的内存存储器
 
 支持注册、查询、删除、匹配规则。所有操作线程安全。
+
+提供 load_from_db() 方法在服务启动时从数据库加载规则到内存。
 """
 
 from __future__ import annotations
@@ -231,6 +233,40 @@ class MockRuleStore:
         """当前规则数量"""
         with self._lock:
             return len(self._rules)
+
+    # ── DB 加载 ─────────────────────────────────────────
+
+    async def load_from_db(self, db_rules: list[Any]) -> int:
+        """从数据库加载规则到内存（在服务启动时调用）。
+
+        清空现有内存规则，然后从数据库记录中重建。
+        用于服务重启后恢复 Mock 规则。
+
+        Args:
+            db_rules: 数据库 MockRuleModel 列表（已启用规则）。
+
+        Returns:
+            加载的规则数量。
+        """
+        with self._lock:
+            self._rules.clear()
+            for db_rule in db_rules:
+                rule = MockRule(
+                    id=str(db_rule.id),
+                    url_pattern=db_rule.url_pattern,
+                    method=db_rule.method,
+                    status_code=db_rule.status_code,
+                    response_body=db_rule.response_body,
+                    response_headers=db_rule.response_headers or {},
+                    description=db_rule.description or "",
+                    enabled=db_rule.enabled,
+                    priority=db_rule.priority or 0,
+                    delay_ms=db_rule.delay_ms or 0,
+                )
+                self._rules[rule.id] = rule
+
+        logger.info("mock_rules_loaded_from_db", count=len(self._rules))
+        return len(self._rules)
 
 
 # ── 全局单例 ───────────────────────────────────────

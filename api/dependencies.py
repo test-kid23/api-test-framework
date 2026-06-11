@@ -8,12 +8,16 @@ Phase 2 T2-2 完成后将替换为 SQLAlchemy AsyncSession。
 T2-7 异步执行支持：
 - create_runner(): 创建 TestRunner（含 AsyncHttpClient），供 executions 路由使用
 - parse_yaml_case(): 将存储的 YAML 内容字符串解析为 TestCase 对象
+
+T5-18 项目级 API 隔离：
+- apply_project_filter(): 通用项目过滤函数，统一各路由的隔离逻辑
 """
 
 from __future__ import annotations
 
 import os
 import threading
+import uuid as _uuid
 from collections.abc import AsyncGenerator
 from copy import deepcopy
 from datetime import datetime, timezone
@@ -21,7 +25,9 @@ from typing import Any, Dict, List, Optional
 
 import yaml
 from pydantic import ValidationError
+from sqlalchemy import ColumnElement
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
+from sqlalchemy.sql.elements import BooleanClauseList
 
 from api.schemas.case import CaseResponse
 from framework.client import AsyncHttpClient, HttpClient
@@ -321,6 +327,74 @@ async def get_db_session() -> AsyncGenerator[AsyncSession, None]:
         except Exception:  # 必须捕获任意异常以执行回滚（FastAPI 依赖安全模式）
             await session.rollback()
             raise
+
+
+# ==================== 项目级 API 隔离（T5-18） ====================
+
+
+def apply_project_filter(
+    stmt: Any,
+    model: Any,
+    current_user: Any,
+    *,
+    project_id_column: str = "project_id",
+    via_model: Any = None,
+    via_column: str = "id",
+    via_fk_column: str = "id",
+) -> Any:
+    """对 SQLAlchemy SELECT 语句应用项目隔离过滤。
+
+    实现多租户项目级数据隔离：
+    - admin 用户可查看所有项目的数据（不过滤）。
+    - 有项目归属的用户只能查看所属项目 + 全局资源（project_id IS NULL）。
+    - 无项目归属的用户只能查看全局资源。
+
+    Args:
+        stmt: SQLAlchemy SELECT 语句。
+        model: 主查询的 ORM 模型。
+        current_user: 当前认证用户（需有 is_admin() 和 project_ids 属性）。
+        project_id_column: model 上的 project_id 列名（默认 "project_id"）。
+        via_model: 通过 JOIN 间接过滤的模型（如 reports 通过 ExecutionModel 过滤）。
+        via_column: via_model 上与 model 关联的列名。
+        via_fk_column: model 上与 via_model 关联的外键列名。
+
+    Returns:
+        应用过滤后的 SELECT 语句。
+
+    Example:
+        # 直接在目标模型上过滤
+        stmt = apply_project_filter(stmt, ScheduleModel, current_user)
+
+        # 通过关联模型间接过滤（reports 通过 executions 隔离）
+        stmt = apply_project_filter(
+            stmt, ReportModel, current_user,
+            via_model=ExecutionModel,
+            via_column=ExecutionModel.id,
+            via_fk_column=ReportModel.execution_id,
+        )
+    """
+    if current_user.is_admin():
+        return stmt
+
+    if via_model is not None:
+        # 通过关联模型间接过滤
+        if current_user.project_ids:
+            condition = via_model.project_id.in_(
+                [_uuid.UUID(pid) for pid in current_user.project_ids]
+            ) | via_model.project_id.is_(None)
+        else:
+            condition = via_model.project_id.is_(None)
+    else:
+        # 直接在当前模型上过滤
+        col = getattr(model, project_id_column)
+        if current_user.project_ids:
+            condition = col.in_(
+                [_uuid.UUID(pid) for pid in current_user.project_ids]
+            ) | col.is_(None)
+        else:
+            condition = col.is_(None)
+
+    return stmt.where(condition)
 
 
 def create_independent_session() -> AsyncSession:

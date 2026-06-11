@@ -391,6 +391,7 @@ async def run_schedule(
         status="PENDING",
         trigger="scheduled",
         env=model.env_name,
+        project_id=model.project_id,
     )
     session.add(exec_model)
 

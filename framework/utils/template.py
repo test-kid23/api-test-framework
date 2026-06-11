@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import base64
 import hashlib
+import hmac
 import os
 import time
 import uuid
@@ -37,6 +38,8 @@ class TemplateEngine:
                 "base64_decode": self._base64_decode,
                 "md5": self._md5,
                 "sha256": self._sha256,
+                "hmac_sha256": self._hmac_sha256,
+                "md5_sign": self._md5_sign,
                 "now": self._now,
                 "env_var": self._env_var,
             }
@@ -121,6 +124,31 @@ class TemplateEngine:
     @staticmethod
     def _now(fmt: str = "%Y-%m-%d %H:%M:%S") -> str:
         return datetime.now().strftime(fmt)
+
+    @staticmethod
+    def _hmac_sha256(key: str, message: str) -> str:
+        """HMAC-SHA256 签名计算。
+
+        Args:
+            key: 签名密钥。
+            message: 待签名的消息。
+
+        Returns:
+            hex 格式的 HMAC-SHA256 签名（64 字符）。
+        """
+        return hmac.new(key.encode(), message.encode(), hashlib.sha256).hexdigest()
+
+    @staticmethod
+    def _md5_sign(message: str) -> str:
+        """MD5 签名计算。
+
+        Args:
+            message: 待签名的消息。
+
+        Returns:
+            hex 格式的 MD5 摘要（32 字符）。
+        """
+        return hashlib.md5(message.encode()).hexdigest()
 
     @staticmethod
     def _env_var(key: str, default: str = "") -> str:

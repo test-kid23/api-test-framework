@@ -7,6 +7,7 @@ from framework.persistence.repositories.execution_repo import (
     ExecutionRepository,
     ExecutionResultRepository,
 )
+from framework.persistence.repositories.mock_rule_repo import MockRuleRepository
 from framework.persistence.repositories.report_repo import ReportRepository
 from framework.persistence.repositories.schedule_repo import ScheduleRepository
 from framework.persistence.repositories.suite_repo import SuiteRepository
@@ -18,6 +19,7 @@ __all__ = [
     "EnvironmentRepository",
     "ExecutionRepository",
     "ExecutionResultRepository",
+    "MockRuleRepository",
     "ProjectRepository",
     "ReportRepository",
     "ScheduleRepository",

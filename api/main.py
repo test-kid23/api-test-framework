@@ -158,6 +158,20 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     except Exception as e:
         _log.error("worker_health_monitor_init_failed", error=str(e), exc_info=True)
 
+    # ── Mock 规则从 DB 加载到内存 ──
+    try:
+        from framework.mock.rule_store import get_mock_store
+        from framework.persistence.repositories.mock_rule_repo import MockRuleRepository
+
+        mock_store = get_mock_store()
+        async with deps._session_factory() as session:
+            repo = MockRuleRepository(session)
+            enabled_rules = await repo.list_all_enabled()
+            await mock_store.load_from_db(enabled_rules)
+        _log.info("mock_rules_loaded_from_db_on_startup")
+    except Exception as e:
+        _log.error("mock_rules_load_from_db_failed", error=str(e), exc_info=True)
+
     yield
 
     # ── 关闭调度器 ──

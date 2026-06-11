@@ -2,6 +2,8 @@
 
 所有方法均接收 AsyncSession，不持有持久状态。
 查询自动适配 SQLite / PostgreSQL，使用 SQLAlchemy 标准 func 避免方言分歧。
+
+T5-18: 所有聚合方法新增 project_ids 参数，实现项目级数据隔离。
 """
 
 from __future__ import annotations
@@ -21,6 +23,26 @@ from framework.persistence.models.execution import ExecutionModel, ExecutionResu
 def _days_ago_utc(days: int) -> datetime:
     """返回 days 天前的 UTC datetime（用于 created_at 过滤）。"""
     return datetime.now(timezone.utc) - timedelta(days=days)
+
+
+def _build_project_condition(project_ids: list[uuid.UUID] | None) -> str:
+    """构建项目过滤 SQL 条件片段。
+
+    Args:
+        project_ids: 项目 ID 列表。
+                     - None: 不过滤（admin 用户）。
+                     - []: 仅全局资源（无项目归属用户）。
+                     - [uuid, ...]: 过滤到指定项目 + 全局资源。
+
+    Returns:
+        SQL WHERE 条件片段字符串，不含前导 AND 关键字。
+    """
+    if project_ids is None:
+        return ""
+    if not project_ids:
+        return "e.project_id IS NULL"
+    quoted = ", ".join(f"'{str(pid)}'" for pid in project_ids)
+    return f"(e.project_id IN ({quoted}) OR e.project_id IS NULL)"
 
 
 async def _fetch_last_errors(
@@ -78,23 +100,26 @@ class ReportService:
         self,
         days: int = 7,
         suite_id: uuid.UUID | None = None,
+        project_ids: list[uuid.UUID] | None = None,
     ) -> list[dict[str, Any]]:
         """查询指定时间范围内的每日通过率趋势。
 
         返回每日的总数/通过数/失败数/通过率/平均耗时。
         若 suite_id 指定，仅统计该套件下的执行。
 
+        Args:
+            days: 统计时间范围（天）。
+            suite_id: 按套件 ID 过滤（可选）。
+            project_ids: 项目过滤（T5-18）。None=不过滤, []=仅全局, [...] 指定项目。
+
         Returns:
             [{date, total, passed, failed, pass_rate, avg_elapsed_ms}, ...]
         """
         start = _days_ago_utc(days)
+        project_cond = _build_project_condition(project_ids)
 
-        # TODO(Phase2): 当前使用 text() 原生 SQL 是为了绕过 SQLAlchemy 2.0 异步编译器处理
-        # func.date() / func.row_number().over() 等复杂聚合函数时可能存在的方言兼容性 bug。
-        # 已在 SQLite 3.45+ 和 PostgreSQL 16+ 验证通过。
-        # 后续应评估并尽量重写为 ORM 查询，以获得编译时检查和方言自动适配。
         if suite_id is not None:
-            sql = sa_text("""
+            sql = sa_text(f"""
                 SELECT
                     DATE(er.created_at) AS date,
                     COUNT(*) AS total,
@@ -106,24 +131,27 @@ class ReportService:
                 FROM execution_results er
                 JOIN executions e ON er.execution_id = e.id
                 WHERE er.created_at >= :start AND e.suite_id = :suite_id
+                {'AND ' + project_cond if project_cond else ''}
                 GROUP BY DATE(er.created_at)
                 ORDER BY DATE(er.created_at) ASC
             """)
-            params = {"start": start, "suite_id": str(suite_id)}
+            params: dict[str, Any] = {"start": start, "suite_id": str(suite_id)}
         else:
-            sql = sa_text("""
+            sql = sa_text(f"""
                 SELECT
-                    DATE(created_at) AS date,
+                    DATE(er.created_at) AS date,
                     COUNT(*) AS total,
-                    SUM(CASE WHEN passed THEN 1 ELSE 0 END) AS passed,
-                    SUM(CASE WHEN NOT passed THEN 1 ELSE 0 END) AS failed,
-                    CAST(SUM(CASE WHEN passed THEN 1 ELSE 0 END) AS FLOAT)
+                    SUM(CASE WHEN er.passed THEN 1 ELSE 0 END) AS passed,
+                    SUM(CASE WHEN NOT er.passed THEN 1 ELSE 0 END) AS failed,
+                    CAST(SUM(CASE WHEN er.passed THEN 1 ELSE 0 END) AS FLOAT)
                         / COUNT(*) AS pass_rate,
-                    AVG(elapsed_ms) AS avg_elapsed_ms
-                FROM execution_results
-                WHERE created_at >= :start
-                GROUP BY DATE(created_at)
-                ORDER BY DATE(created_at) ASC
+                    AVG(er.elapsed_ms) AS avg_elapsed_ms
+                FROM execution_results er
+                JOIN executions e ON er.execution_id = e.id
+                WHERE er.created_at >= :start
+                {'AND ' + project_cond if project_cond else ''}
+                GROUP BY DATE(er.created_at)
+                ORDER BY DATE(er.created_at) ASC
             """)
             params = {"start": start}
 
@@ -208,6 +236,7 @@ class ReportService:
         days: int = 30,
         granularity: str = "day",
         suite_id: uuid.UUID | None = None,
+        project_ids: list[uuid.UUID] | None = None,
     ) -> list[dict[str, Any]]:
         """查询指定时间范围内的通过率趋势，支持 day/week/month 粒度.
 
@@ -217,20 +246,22 @@ class ReportService:
             days: 统计时间范围（天）.
             granularity: 粒度 (day/week/month).
             suite_id: 按套件 ID 过滤（可选）.
+            project_ids: 项目过滤（T5-18）. None=不过滤, []=仅全局, [...] 指定项目.
 
         Returns:
             [{date, total, passed, failed, pass_rate, avg_elapsed_ms}, ...]
         """
         if granularity == "day":
-            return await self.get_pass_rate_trend(days=days, suite_id=suite_id)
+            return await self.get_pass_rate_trend(
+                days=days, suite_id=suite_id, project_ids=project_ids
+            )
 
         start = _days_ago_utc(days)
+        project_cond = _build_project_condition(project_ids)
 
         if granularity == "week":
-            # 按 ISO 周分组: %Y-%W
             date_format = "%Y-%W"
         else:
-            # month: %Y-%m
             date_format = "%Y-%m"
 
         if suite_id is not None:
@@ -246,6 +277,7 @@ class ReportService:
                 FROM execution_results er
                 JOIN executions e ON er.execution_id = e.id
                 WHERE er.created_at >= :start AND e.suite_id = :suite_id
+                {'AND ' + project_cond if project_cond else ''}
                 GROUP BY STRFTIME('{date_format}', er.created_at)
                 ORDER BY STRFTIME('{date_format}', er.created_at) ASC
             """)
@@ -253,17 +285,19 @@ class ReportService:
         else:
             sql = sa_text(f"""
                 SELECT
-                    STRFTIME('{date_format}', created_at) AS date,
+                    STRFTIME('{date_format}', er.created_at) AS date,
                     COUNT(*) AS total,
-                    SUM(CASE WHEN passed THEN 1 ELSE 0 END) AS passed,
-                    SUM(CASE WHEN NOT passed THEN 1 ELSE 0 END) AS failed,
-                    CAST(SUM(CASE WHEN passed THEN 1 ELSE 0 END) AS FLOAT)
+                    SUM(CASE WHEN er.passed THEN 1 ELSE 0 END) AS passed,
+                    SUM(CASE WHEN NOT er.passed THEN 1 ELSE 0 END) AS failed,
+                    CAST(SUM(CASE WHEN er.passed THEN 1 ELSE 0 END) AS FLOAT)
                         / COUNT(*) AS pass_rate,
-                    AVG(elapsed_ms) AS avg_elapsed_ms
-                FROM execution_results
-                WHERE created_at >= :start
-                GROUP BY STRFTIME('{date_format}', created_at)
-                ORDER BY STRFTIME('{date_format}', created_at) ASC
+                    AVG(er.elapsed_ms) AS avg_elapsed_ms
+                FROM execution_results er
+                JOIN executions e ON er.execution_id = e.id
+                WHERE er.created_at >= :start
+                {'AND ' + project_cond if project_cond else ''}
+                GROUP BY STRFTIME('{date_format}', er.created_at)
+                ORDER BY STRFTIME('{date_format}', er.created_at) ASC
             """)
             params = {"start": start}
 
@@ -288,6 +322,7 @@ class ReportService:
         self,
         days: int = 30,
         suite_id: uuid.UUID | None = None,
+        project_ids: list[uuid.UUID] | None = None,
     ) -> list[dict[str, Any]]:
         """查询每日响应时间分位数 P50/P90/P95/P99.
 
@@ -297,14 +332,16 @@ class ReportService:
         Args:
             days: 统计时间范围（天）.
             suite_id: 按套件 ID 过滤（可选）.
+            project_ids: 项目过滤（T5-18）. None=不过滤, []=仅全局, [...] 指定项目.
 
         Returns:
             [{date, p50, p90, p95, p99, avg, min, max, total}, ...]
         """
         start = _days_ago_utc(days)
+        project_cond = _build_project_condition(project_ids)
 
         if suite_id is not None:
-            sql = sa_text("""
+            sql = sa_text(f"""
                 SELECT
                     DATE(er.created_at) AS date,
                     er.elapsed_ms
@@ -313,17 +350,20 @@ class ReportService:
                 WHERE er.created_at >= :start
                   AND er.elapsed_ms IS NOT NULL
                   AND e.suite_id = :suite_id
+                  {'AND ' + project_cond if project_cond else ''}
                 ORDER BY DATE(er.created_at) ASC
             """)
             params = {"start": start, "suite_id": str(suite_id)}
         else:
-            sql = sa_text("""
+            sql = sa_text(f"""
                 SELECT
-                    DATE(created_at) AS date,
-                    elapsed_ms
-                FROM execution_results
-                WHERE created_at >= :start AND elapsed_ms IS NOT NULL
-                ORDER BY DATE(created_at) ASC
+                    DATE(er.created_at) AS date,
+                    er.elapsed_ms
+                FROM execution_results er
+                JOIN executions e ON er.execution_id = e.id
+                WHERE er.created_at >= :start AND er.elapsed_ms IS NOT NULL
+                {'AND ' + project_cond if project_cond else ''}
+                ORDER BY DATE(er.created_at) ASC
             """)
             params = {"start": start}
 
@@ -373,6 +413,7 @@ class ReportService:
         days: int = 30,
         threshold: float = 0.8,
         suite_id: uuid.UUID | None = None,
+        project_ids: list[uuid.UUID] | None = None,
     ) -> list[dict[str, Any]]:
         """查询通过率低于阈值的接口（不稳定接口）.
 
@@ -383,11 +424,13 @@ class ReportService:
             days: 统计时间范围（天）.
             threshold: 通过率阈值（0-1），低于此值的视为不稳定.
             suite_id: 按套件 ID 过滤（可选）.
+            project_ids: 项目过滤（T5-18）. None=不过滤, []=仅全局, [...] 指定项目.
 
         Returns:
             [{case_name, case_id, total, passed, failed, pass_rate, avg_elapsed_ms}, ...]
         """
         start = _days_ago_utc(days)
+        project_cond = _build_project_condition(project_ids)
         params: dict[str, Any] = {
             "start": start,
             "threshold": threshold,
@@ -396,7 +439,7 @@ class ReportService:
 
         if suite_id is not None:
             params["suite_id"] = str(suite_id)
-            sql = sa_text("""
+            sql = sa_text(f"""
                 SELECT
                     er.case_name,
                     er.case_id,
@@ -409,6 +452,7 @@ class ReportService:
                 FROM execution_results er
                 JOIN executions e ON er.execution_id = e.id
                 WHERE er.created_at >= :start AND e.suite_id = :suite_id
+                {'AND ' + project_cond if project_cond else ''}
                 GROUP BY er.case_name, er.case_id
                 HAVING COUNT(*) >= :min_runs
                    AND CAST(SUM(CASE WHEN er.passed THEN 1 ELSE 0 END) AS FLOAT)
@@ -416,21 +460,23 @@ class ReportService:
                 ORDER BY pass_rate ASC
             """)
         else:
-            sql = sa_text("""
+            sql = sa_text(f"""
                 SELECT
-                    case_name,
-                    case_id,
+                    er.case_name,
+                    er.case_id,
                     COUNT(*) AS total,
-                    SUM(CASE WHEN passed THEN 1 ELSE 0 END) AS passed,
-                    SUM(CASE WHEN NOT passed THEN 1 ELSE 0 END) AS failed,
-                    CAST(SUM(CASE WHEN passed THEN 1 ELSE 0 END) AS FLOAT)
+                    SUM(CASE WHEN er.passed THEN 1 ELSE 0 END) AS passed,
+                    SUM(CASE WHEN NOT er.passed THEN 1 ELSE 0 END) AS failed,
+                    CAST(SUM(CASE WHEN er.passed THEN 1 ELSE 0 END) AS FLOAT)
                         / COUNT(*) AS pass_rate,
-                    AVG(elapsed_ms) AS avg_elapsed_ms
-                FROM execution_results
-                WHERE created_at >= :start
-                GROUP BY case_name, case_id
+                    AVG(er.elapsed_ms) AS avg_elapsed_ms
+                FROM execution_results er
+                JOIN executions e ON er.execution_id = e.id
+                WHERE er.created_at >= :start
+                {'AND ' + project_cond if project_cond else ''}
+                GROUP BY er.case_name, er.case_id
                 HAVING COUNT(*) >= :min_runs
-                   AND CAST(SUM(CASE WHEN passed THEN 1 ELSE 0 END) AS FLOAT)
+                   AND CAST(SUM(CASE WHEN er.passed THEN 1 ELSE 0 END) AS FLOAT)
                        / COUNT(*) < :threshold
                 ORDER BY pass_rate ASC
             """)
@@ -457,22 +503,37 @@ class ReportService:
         self,
         limit: int = 10,
         suite_id: uuid.UUID | None = None,
+        project_ids: list[uuid.UUID] | None = None,
     ) -> list[dict[str, Any]]:
         """查询失败次数最多的 Top N 用例。
 
         先按 case_name 分组计数，再批量查询每个 case_name 最近一次失败的错误信息。
 
+        Args:
+            limit: 返回数量.
+            suite_id: 按套件 ID 过滤（可选）.
+            project_ids: 项目过滤（T5-18）. None=不过滤, []=仅全局, [...] 指定项目.
+
         Returns:
             [{case_id, case_name, fail_count, last_failed_at, last_error}, ...]
         """
         conditions = [ExecutionResultModel.passed == False]
-        join_clauses: list[tuple] = []
+        join_clauses: list[tuple] = [
+            (ExecutionModel, ExecutionResultModel.execution_id == ExecutionModel.id)
+        ]
 
         if suite_id is not None:
-            join_clauses.append(
-                (ExecutionModel, ExecutionResultModel.execution_id == ExecutionModel.id)
-            )
             conditions.append(ExecutionModel.suite_id == suite_id)
+
+        # 项目隔离过滤
+        if project_ids is not None:
+            if not project_ids:
+                conditions.append(ExecutionModel.project_id.is_(None))
+            else:
+                conditions.append(
+                    ExecutionModel.project_id.in_(project_ids)
+                    | ExecutionModel.project_id.is_(None)
+                )
 
         # 聚合查询
         agg_cols = [

@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
+import { useTranslation } from "react-i18next";
 import { login } from "@/api/auth";
 import { useAuthStore } from "@/store/authStore";
 import { Button } from "@/components/ui/button";
@@ -8,6 +9,7 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { FlaskConical, Loader2, AlertCircle } from "lucide-react";
 
 export function LoginPage() {
+  const { t } = useTranslation();
   const navigate = useNavigate();
   const setAuth = useAuthStore((s) => s.setAuth);
 
@@ -21,20 +23,20 @@ export function LoginPage() {
     setError("");
 
     if (!username.trim() || !password.trim()) {
-      setError("请输入用户名和密码");
+      setError(t("auth.emptyFieldsError"));
       return;
     }
 
     setLoading(true);
     try {
       const res = await login({ username: username.trim(), password });
-      setAuth(res.token.access_token, res.user);
+      setAuth(res.token.access_token, res.token.refresh_token || "", res.user);
       navigate("/cases", { replace: true });
     } catch (err: unknown) {
       const respData = (err as { response?: { data?: Record<string, unknown> } }).response?.data;
       // FastAPI HTTPException 格式: { detail: { error, code } }
       const rawDetail = respData?.detail;
-      let msg = "登录失败，请检查用户名和密码";
+      let msg = t("auth.loginFailed");
       if (typeof rawDetail === "string") {
         msg = rawDetail;
       } else if (rawDetail && typeof rawDetail === "object") {
@@ -56,8 +58,8 @@ export function LoginPage() {
           <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-xl bg-primary/10">
             <FlaskConical className="h-6 w-6 text-primary" />
           </div>
-          <CardTitle className="text-xl">AutoTest Framework</CardTitle>
-          <CardDescription>登录以管理你的测试平台</CardDescription>
+          <CardTitle className="text-xl">{t("app.title")}</CardTitle>
+          <CardDescription>{t("app.subtitle")}</CardDescription>
         </CardHeader>
 
         <form onSubmit={handleSubmit}>
@@ -71,12 +73,12 @@ export function LoginPage() {
 
             <div className="space-y-2">
               <label htmlFor="username" className="text-sm font-medium">
-                用户名
+                {t("auth.username")}
               </label>
               <Input
                 id="username"
                 type="text"
-                placeholder="请输入用户名"
+                placeholder={t("auth.usernamePlaceholder")}
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
                 autoComplete="username"
@@ -87,12 +89,12 @@ export function LoginPage() {
 
             <div className="space-y-2">
               <label htmlFor="password" className="text-sm font-medium">
-                密码
+                {t("auth.password")}
               </label>
               <Input
                 id="password"
                 type="password"
-                placeholder="请输入密码"
+                placeholder={t("auth.passwordPlaceholder")}
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 autoComplete="current-password"
@@ -106,19 +108,19 @@ export function LoginPage() {
               {loading ? (
                 <>
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  登录中...
+                  {t("auth.loggingIn")}
                 </>
               ) : (
-                "登 录"
+                t("auth.login")
               )}
             </Button>
             <p className="text-sm text-muted-foreground text-center">
-              没有账号？{" "}
+              {t("app.noAccount")}{" "}
               <Link
                 to="/register"
                 className="text-primary hover:underline font-medium"
               >
-                去注册
+                {t("app.goRegister")}
               </Link>
             </p>
           </CardFooter>

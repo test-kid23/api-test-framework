@@ -1,0 +1,70 @@
+﻿python : D:\Python311\site-packages\pytest_asyncio\plugin.py:217: PytestDeprecationWarning: The configuration option "a
+syncio_default_fixture_loop_scope" is unset.
+所在位置 行:1 字符: 164
++ ... ing]::UTF8; python -m pytest d:/AAA1/apitestframework/tests/framework ...
++                 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (D:\Python311\si...cope" is unset.:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+The event loop scope for asynchronous fixtures will default to the fixture caching scope. Future versions of pytest-asy
+ncio will default the loop scope for asynchronous fixtures to function scope. Set the default fixture loop scope explic
+itly in order to avoid unexpected behavior in the future. Valid fixture loop scopes are: "function", "class", "module",
+ "package", "session"
+
+  warnings.warn(PytestDeprecationWarning(_DEFAULT_FIXTURE_LOOP_SCOPE_UNSET))
+============================= test session starts =============================
+collecting ... collected 51 items
+
+tests/framework/test_p2_batch3.py::TestVarDetector::test_import PASSED   [  1%]
+tests/framework/test_p2_batch3.py::TestVarDetector::test_detect_uuid PASSED [  3%]
+tests/framework/test_p2_batch3.py::TestVarDetector::test_detect_iso_timestamp PASSED [  5%]
+tests/framework/test_p2_batch3.py::TestVarDetector::test_detect_jwt_token PASSED [  7%]
+tests/framework/test_p2_batch3.py::TestVarDetector::test_detect_unix_timestamp_seconds PASSED [  9%]
+tests/framework/test_p2_batch3.py::TestVarDetector::test_detect_unix_timestamp_milliseconds PASSED [ 11%]
+tests/framework/test_p2_batch3.py::TestVarDetector::test_detect_md5_hash PASSED [ 13%]
+tests/framework/test_p2_batch3.py::TestVarDetector::test_detect_sha256_hash PASSED [ 15%]
+tests/framework/test_p2_batch3.py::TestVarDetector::test_detect_signature_param_name PASSED [ 17%]
+tests/framework/test_p2_batch3.py::TestVarDetector::test_detect_url_multiple_params PASSED [ 19%]
+tests/framework/test_p2_batch3.py::TestVarDetector::test_detect_headers_bearer_token PASSED [ 21%]
+tests/framework/test_p2_batch3.py::TestVarDetector::test_detect_body_dict PASSED [ 23%]
+tests/framework/test_p2_batch3.py::TestVarDetector::test_detect_body_nested PASSED [ 25%]
+tests/framework/test_p2_batch3.py::TestVarDetector::test_detect_body_list PASSED [ 27%]
+tests/framework/test_p2_batch3.py::TestVarDetector::test_detect_entry_comprehensive PASSED [ 29%]
+tests/framework/test_p2_batch3.py::TestVarDetector::test_detect_entry_no_dynamic PASSED [ 31%]
+tests/framework/test_p2_batch3.py::TestVarDetector::test_generate_replacements PASSED [ 33%]
+tests/framework/test_p2_batch3.py::TestVarDetector::test_custom_pattern PASSED [ 35%]
+tests/framework/test_p2_batch3.py::TestVarDetector::test_custom_pattern_invalid_regex PASSED [ 37%]
+tests/framework/test_p2_batch3.py::TestVarDetector::test_detected_var_dataclass PASSED [ 39%]
+tests/framework/test_p2_batch3.py::TestVarDetector::test_ignore_non_string_values PASSED [ 41%]
+tests/framework/test_p2_batch3.py::TestVarDetector::test_unix_timestamp_out_of_range_ignored PASSED [ 43%]
+tests/framework/test_p2_batch3.py::TestVarDetector::test_dedup_in_detect_entry PASSED [ 45%]
+tests/framework/test_p2_batch3.py::TestVarDetector::test_sanitize_key PASSED [ 47%]
+tests/framework/test_p2_batch3.py::TestHARPlayerVarDetection::test_player_has_var_detector_attr PASSED [ 49%]
+tests/framework/test_p2_batch3.py::TestHARPlayerVarDetection::test_player_var_detection_disabled_by_default PASSED [ 50%]
+tests/framework/test_p2_batch3.py::TestHARPlayerVarDetection::test_playback_report_has_detected_vars_field PASSED [ 52%]
+tests/framework/test_p2_batch3.py::TestHARPlayerVarDetection::test_playback_report_to_dict_includes_detected_vars PASSED [ 54%]
+tests/framework/test_p2_batch3.py::TestHARPlayerVarDetection::test_playback_report_to_dict_omits_empty_detected_vars PASSED [ 56%]
+tests/framework/test_p2_batch3.py::TestHARPlayerVarDetection::test_apply_var_replacements_no_detector PASSED [ 58%]
+tests/framework/test_p2_batch3.py::TestHARPlayerVarDetection::test_apply_var_replacements_with_detector PASSED [ 60%]
+tests/framework/test_p2_batch3.py::TestHARPlayerVarDetection::test_replace_in_body_dict PASSED [ 62%]
+tests/framework/test_p2_batch3.py::TestHARPlayerVarDetection::test_replace_in_body_list PASSED [ 64%]
+tests/framework/test_p2_batch3.py::TestPasswordStrengthValidation::test_valid_password_passes PASSED [ 66%]
+tests/framework/test_p2_batch3.py::TestPasswordStrengthValidation::test_too_short_fails PASSED [ 68%]
+tests/framework/test_p2_batch3.py::TestPasswordStrengthValidation::test_no_uppercase_fails PASSED [ 70%]
+tests/framework/test_p2_batch3.py::TestPasswordStrengthValidation::test_no_lowercase_fails PASSED [ 72%]
+tests/framework/test_p2_batch3.py::TestPasswordStrengthValidation::test_no_digit_fails PASSED [ 74%]
+tests/framework/test_p2_batch3.py::TestPasswordStrengthValidation::test_no_special_char_fails PASSED [ 76%]
+tests/framework/test_p2_batch3.py::TestLoginLockout::test_check_login_lockout_initial PASSED [ 78%]
+tests/framework/test_p2_batch3.py::TestLoginLockout::test_record_and_check_lockout PASSED [ 80%]
+tests/framework/test_p2_batch3.py::TestLoginLockout::test_reset_after_success PASSED [ 82%]
+tests/framework/test_p2_batch3.py::TestLoginLockout::test_lockout_not_triggered_below_threshold PASSED [ 84%]
+tests/framework/test_p2_batch3.py::TestPasswordStrengthInRoutes::test_auth_imports_strength_functions PASSED [ 86%]
+tests/framework/test_p2_batch3.py::TestPasswordStrengthInRoutes::test_login_endpoint_has_lockout_check PASSED [ 88%]
+tests/framework/test_p2_batch3.py::TestPasswordStrengthInRoutes::test_register_endpoint_has_strength_check PASSED [ 90%]
+tests/framework/test_p2_batch3.py::TestPasswordStrengthInRoutes::test_change_password_endpoint_has_strength_check PASSED [ 92%]
+tests/framework/test_p2_batch3.py::TestPasswordStrengthInRoutes::test_admin_create_user_has_strength_check PASSED [ 94%]
+tests/framework/test_p2_batch3.py::TestPasswordStrengthInRoutes::test_admin_update_user_password_has_strength_check PASSED [ 96%]
+tests/framework/test_p2_batch3.py::TestT21T22Integration::test_var_detector_full_flow PASSED [ 98%]
+tests/framework/test_p2_batch3.py::TestT21T22Integration::test_password_strength_all_cases PASSED [100%]
+
+============================= 51 passed in 0.56s ==============================

@@ -9,6 +9,19 @@ const client = axios.create({
   },
 });
 
+// ── 刷新 token 的防并发锁 ──
+let isRefreshing = false;
+let refreshSubscribers: ((token: string) => void)[] = [];
+
+function subscribeTokenRefresh(cb: (token: string) => void) {
+  refreshSubscribers.push(cb);
+}
+
+function onTokenRefreshed(newToken: string) {
+  refreshSubscribers.forEach((cb) => cb(newToken));
+  refreshSubscribers = [];
+}
+
 // ── 请求拦截器：自动附加 Bearer Token ──
 client.interceptors.request.use(
   (config) => {
@@ -21,7 +34,7 @@ client.interceptors.request.use(
   (error) => Promise.reject(error),
 );
 
-// ── 响应拦截器：解包 SuccessResponse + 处理 401 ──
+// ── 响应拦截器：解包 SuccessResponse + 静默刷新 401 ──
 client.interceptors.response.use(
   (response) => {
     // 后端统一用 SuccessResponse<T> 包裹，自动解包: { success, data } → data
@@ -31,13 +44,51 @@ client.interceptors.response.use(
     }
     return response;
   },
-  (error) => {
+  async (error) => {
+    const originalRequest = error.config;
     const status = error.response?.status;
 
-    if (status === 401) {
-      // Token 过期或无效 — 清除登录状态并跳转到登录页
-      useAuthStore.getState().logout();
-      // 避免在登录页上重复跳转
+    if (status === 401 && !originalRequest._retry) {
+      const store = useAuthStore.getState();
+      const refreshToken = store.refreshToken;
+
+      // 有 refresh token 时尝试静默刷新
+      if (refreshToken) {
+        if (isRefreshing) {
+          // 已有刷新请求在进行中，排队等待
+          return new Promise((resolve) => {
+            subscribeTokenRefresh((newToken: string) => {
+              originalRequest.headers.Authorization = `Bearer ${newToken}`;
+              originalRequest._retry = true;
+              resolve(client(originalRequest));
+            });
+          });
+        }
+
+        originalRequest._retry = true;
+        isRefreshing = true;
+
+        try {
+          const response = await axios.post("/api/v1/auth/refresh", {
+            refresh_token: refreshToken,
+          });
+          const newToken = response.data?.data?.access_token;
+          if (newToken) {
+            store.setToken(newToken);
+            onTokenRefreshed(newToken);
+            isRefreshing = false;
+            originalRequest.headers.Authorization = `Bearer ${newToken}`;
+            return client(originalRequest);
+          }
+        } catch {
+          // 刷新失败，清除状态并跳转登录
+          isRefreshing = false;
+          refreshSubscribers = [];
+        }
+      }
+
+      // 刷新失败或无 refresh token — 清除登录状态并跳转
+      store.logout();
       if (window.location.hash !== "#/login") {
         window.location.hash = "#/login";
       }

@@ -67,6 +67,12 @@ class AdminUpdateUserRequest(BaseModel):
     )
 
 
+class RefreshTokenRequest(BaseModel):
+    """刷新 Token 请求"""
+
+    refresh_token: str = Field(..., description="JWT 刷新令牌")
+
+
 class ChangePasswordRequest(BaseModel):
     """修改密码请求"""
 
@@ -81,6 +87,7 @@ class TokenResponse(BaseModel):
     """JWT Token 响应"""
 
     access_token: str = Field(..., description="JWT 访问令牌")
+    refresh_token: str | None = Field(default=None, description="JWT 刷新令牌")
     token_type: str = Field(default="bearer", description="令牌类型")
     expires_in: int = Field(..., description="过期时间（秒）")
 

@@ -24,6 +24,16 @@ def _days_ago_utc(days: int) -> datetime:
     return datetime.now(timezone.utc) - timedelta(days=days)
 
 
+def _build_project_condition(project_ids: list[uuid.UUID] | None) -> str:
+    """构建项目过滤 SQL 条件片段（与 report_service.py 中的实现一致）."""
+    if project_ids is None:
+        return ""
+    if not project_ids:
+        return "e.project_id IS NULL"
+    quoted = ", ".join(f"'{str(pid)}'" for pid in project_ids)
+    return f"(e.project_id IN ({quoted}) OR e.project_id IS NULL)"
+
+
 # ── AnalyticsService ────────────────────────────────────────
 
 
@@ -202,6 +212,7 @@ class AnalyticsService:
         self,
         days: int = 30,
         suite_id: uuid.UUID | None = None,
+        project_ids: list[uuid.UUID] | None = None,
     ) -> list[dict[str, Any]]:
         """对失败用例按原因进行分类统计。
 
@@ -215,27 +226,32 @@ class AnalyticsService:
         Args:
             days: 统计时间范围（天）。
             suite_id: 按套件 ID 过滤（可选）。
+            project_ids: 项目过滤（T5-18）. None=不过滤, []=仅全局, [...] 指定项目.
 
         Returns:
             [{category, count, percentage, examples: [...]}, ...]
         """
         start = _days_ago_utc(days)
+        project_cond = _build_project_condition(project_ids)
 
         if suite_id is not None:
-            sql = sa_text("""
+            sql = sa_text(f"""
                 SELECT er.error, er.case_name
                 FROM execution_results er
                 JOIN executions e ON er.execution_id = e.id
                 WHERE er.created_at >= :start
                   AND er.passed = FALSE
                   AND e.suite_id = :suite_id
+                  {'AND ' + project_cond if project_cond else ''}
             """)
             params = {"start": start, "suite_id": str(suite_id)}
         else:
-            sql = sa_text("""
-                SELECT error, case_name
-                FROM execution_results
-                WHERE created_at >= :start AND passed = FALSE
+            sql = sa_text(f"""
+                SELECT er.error, er.case_name
+                FROM execution_results er
+                JOIN executions e ON er.execution_id = e.id
+                WHERE er.created_at >= :start AND er.passed = FALSE
+                {'AND ' + project_cond if project_cond else ''}
             """)
             params = {"start": start}
 

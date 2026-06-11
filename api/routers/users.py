@@ -17,7 +17,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from api.auth import CurrentUser, hash_password, require_role
+from api.auth import CurrentUser, hash_password, require_role, validate_password_strength
 from api.dependencies import get_db_session
 from api.schemas.auth import (
     AdminCreateUserRequest,
@@ -108,7 +108,19 @@ async def create_user(
     current_user: Annotated[CurrentUser, Depends(require_role("admin"))],
     session: AsyncSession = Depends(get_db_session),
 ) -> SuccessResponse[UserResponse]:
-    """admin 在后台创建用户，可指定角色和初始密码。"""
+    """admin 在后台创建用户，可指定角色和初始密码。
+
+    密码强度要求与注册相同:
+    - 至少 8 个字符
+    - 包含大写字母、小写字母、数字、特殊字符
+    """
+    password_error = validate_password_strength(body.password)
+    if password_error:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={"error": password_error, "code": "weak_password"},
+        )
+
     user_repo = UserRepository(session)
     if await user_repo.find_by_username(body.username) is not None:
         raise HTTPException(
@@ -232,6 +244,12 @@ async def update_user(
             )
         user.is_active = body.is_active
     if body.new_password is not None:
+        password_error = validate_password_strength(body.new_password)
+        if password_error:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail={"error": password_error, "code": "weak_password"},
+            )
         user.password_hash = hash_password(body.new_password)
 
     await user_repo.update(user)

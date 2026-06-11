@@ -27,7 +27,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.auth import CurrentUser, get_current_user
-from api.dependencies import get_db_session
+from api.dependencies import apply_project_filter, get_db_session
 from api.schemas.common import (
     PaginatedResponse,
     PaginationMeta,
@@ -78,6 +78,23 @@ def _parse_suite_id(suite_id: str | None) -> uuid.UUID | None:
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"suite_id 格式无效: {suite_id}",
         )
+
+
+def _build_project_ids_filter(current_user: CurrentUser) -> list[uuid.UUID] | None:
+    """根据当前用户构建 project_ids 过滤参数。
+
+    - admin: 返回 None（不过滤）。
+    - 有项目归属: 返回用户的 project_id 列表 + None（含全局资源）。
+    - 无项目归属: 返回空列表（只显示全局资源，通过 is_(None) 过滤）。
+
+    注意：返回 None 表示"不过滤"，在 service 层不做 project_id 过滤。
+          返回 [] 表示"仅全局资源"，在 service 层添加 project_id IS NULL。
+    """
+    if current_user.is_admin():
+        return None
+    if current_user.project_ids:
+        return [uuid.UUID(pid) for pid in current_user.project_ids]
+    return []
 
 
 # ── GET /reports ──────────────────────────────────────────
@@ -190,10 +207,16 @@ async def get_trends(
 
     返回每天的总用例数、通过数、失败数、通过率、平均耗时。
     支持按 suite_id 过滤，仅统计该套件下的执行结果。
+    非 admin 用户只能看到所属项目的趋势数据。
     """
     suite_uuid = _parse_suite_id(suite_id)
     service = ReportService(session)
-    rows = await service.get_pass_rate_trend(days=days, suite_id=suite_uuid)
+
+    # 项目隔离：构建 project_ids 过滤参数
+    project_ids = _build_project_ids_filter(current_user)
+    rows = await service.get_pass_rate_trend(
+        days=days, suite_id=suite_uuid, project_ids=project_ids
+    )
 
     items = [
         TrendItem(
@@ -229,6 +252,7 @@ async def get_pass_rate_trend(
         description="按套件 ID 过滤（UUID 格式）",
     ),
     session: AsyncSession = Depends(get_db_session),
+    current_user: CurrentUser = Depends(get_current_user),
 ):
     """查询通过率趋势，支持 day/week/month 三种粒度。
 
@@ -238,8 +262,10 @@ async def get_pass_rate_trend(
     """
     suite_uuid = _parse_suite_id(suite_id)
     service = ReportService(session)
+    project_ids = _build_project_ids_filter(current_user)
     rows = await service.get_pass_rate_trend_with_granularity(
-        days=days, granularity=granularity, suite_id=suite_uuid
+        days=days, granularity=granularity, suite_id=suite_uuid,
+        project_ids=project_ids,
     )
 
     items = [
@@ -271,15 +297,18 @@ async def get_response_time_trend(
         description="按套件 ID 过滤（UUID 格式）",
     ),
     session: AsyncSession = Depends(get_db_session),
+    current_user: CurrentUser = Depends(get_current_user),
 ):
     """查询每日响应时间分位数 P50/P90/P95/P99 趋势。
 
     返回每天的分位数、平均值、最小值、最大值和样本数量。
+    非 admin 用户只能看到所属项目的数据。
     """
     suite_uuid = _parse_suite_id(suite_id)
     service = ReportService(session)
+    project_ids = _build_project_ids_filter(current_user)
     rows = await service.get_response_time_percentiles_trend(
-        days=days, suite_id=suite_uuid
+        days=days, suite_id=suite_uuid, project_ids=project_ids
     )
 
     items = [
@@ -314,14 +343,19 @@ async def get_failure_categories(
         description="按套件 ID 过滤（UUID 格式）",
     ),
     session: AsyncSession = Depends(get_db_session),
+    current_user: CurrentUser = Depends(get_current_user),
 ):
     """对失败用例按原因进行分类统计。
 
     分类: assertion_failure / connection_timeout / connection_error / http_error / other
+    非 admin 用户只能看到所属项目的数据。
     """
     suite_uuid = _parse_suite_id(suite_id)
     service = AnalyticsService(session)
-    rows = await service.get_failure_categories(days=days, suite_id=suite_uuid)
+    project_ids = _build_project_ids_filter(current_user)
+    rows = await service.get_failure_categories(
+        days=days, suite_id=suite_uuid, project_ids=project_ids
+    )
 
     items = [
         FailureCategoryItem(
@@ -355,15 +389,19 @@ async def get_unstable_endpoints(
         description="按套件 ID 过滤（UUID 格式）",
     ),
     session: AsyncSession = Depends(get_db_session),
+    current_user: CurrentUser = Depends(get_current_user),
 ):
     """查询通过率低于指定阈值的接口（不稳定接口）。
 
     仅统计至少执行 5 次的接口，避免样本过少导致误判。
+    非 admin 用户只能看到所属项目的数据。
     """
     suite_uuid = _parse_suite_id(suite_id)
     service = ReportService(session)
+    project_ids = _build_project_ids_filter(current_user)
     rows = await service.get_unstable_endpoints(
-        days=days, threshold=threshold, suite_id=suite_uuid
+        days=days, threshold=threshold, suite_id=suite_uuid,
+        project_ids=project_ids,
     )
 
     items = [
@@ -399,11 +437,14 @@ async def get_top_failures(
     """查询失败次数最多的 Top N 用例。
 
     按失败次数降序排列，包含最近失败时间和错误信息。
-    支持按 suite_id 过滤。
+    支持按 suite_id 过滤。非 admin 用户只能看到所属项目的数据。
     """
     suite_uuid = _parse_suite_id(suite_id)
     service = ReportService(session)
-    rows = await service.get_top_failures(limit=limit, suite_id=suite_uuid)
+    project_ids = _build_project_ids_filter(current_user)
+    rows = await service.get_top_failures(
+        limit=limit, suite_id=suite_uuid, project_ids=project_ids
+    )
 
     items = [
         TopFailure(

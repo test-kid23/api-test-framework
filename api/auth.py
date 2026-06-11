@@ -3,6 +3,7 @@
 提供:
 - create_access_token(): 生成 JWT。
 - verify_password() / hash_password(): 密码哈希与验证。
+- validate_password_strength(): 密码强度校验。
 - get_current_user(): FastAPI 依赖，从 token 中解析当前用户。
 - require_role(): FastAPI 依赖工厂，检查用户角色。
 """
@@ -10,6 +11,7 @@
 from __future__ import annotations
 
 import os
+import time
 import uuid
 from datetime import datetime, timedelta, timezone
 from typing import Annotated
@@ -50,6 +52,18 @@ def _get_jwt_expire_minutes() -> int:
     return getattr(project_config, "jwt_expire_minutes", 480)
 
 
+def _get_refresh_token_expire_days() -> int:
+    """获取 refresh token 过期时间（天）。"""
+    env_expire = os.environ.get("AUTOTEST_REFRESH_TOKEN_EXPIRE_DAYS")
+    if env_expire:
+        return int(env_expire)
+    from framework.config import ConfigLoader
+
+    loader = ConfigLoader()
+    project_config, _ = loader.load()
+    return getattr(project_config, "refresh_token_expire_days", 7)
+
+
 ALGORITHM = "HS256"
 
 # HTTP Bearer 安全方案
@@ -86,6 +100,112 @@ def hash_password(password: str) -> str:
     """
     salt = bcrypt.gensalt()
     return bcrypt.hashpw(password.encode("utf-8"), salt).decode("utf-8")
+
+
+# ==================== 密码强度策略 ====================
+
+# 登录失败锁定配置
+_MAX_LOGIN_ATTEMPTS = 5
+_LOCKOUT_MINUTES = 30
+_LOGIN_FAILURES: dict[str, tuple[int, float]] = {}
+"""内存中的登录失败计数器: {username: (failures, lockout_until_timestamp)}"""
+
+
+def validate_password_strength(password: str) -> str | None:
+    """校验密码强度，不符合要求时返回错误消息。
+
+    要求:
+    - 至少 8 个字符
+    - 包含大写字母
+    - 包含小写字母
+    - 包含数字
+    - 包含特殊字符 (!@#$%^&*()_+-=[]{}|;':\",./<>?)
+
+    Args:
+        password: 明文密码。
+
+    Returns:
+        校验通过返回 None，不通过返回错误描述字符串。
+    """
+    if len(password) < 8:
+        return "密码长度至少为 8 个字符"
+
+    if not any(c.isupper() for c in password):
+        return "密码必须包含至少一个大写字母"
+
+    if not any(c.islower() for c in password):
+        return "密码必须包含至少一个小写字母"
+
+    if not any(c.isdigit() for c in password):
+        return "密码必须包含至少一个数字"
+
+    specials = "!@#$%^&*()_+-=[]{}|;':\",./<>?"
+    if not any(c in specials for c in password):
+        return "密码必须包含至少一个特殊字符 (!@#$%^&*()_+-=[]{}|;':\",./<>?)"
+
+    return None
+
+
+def check_login_lockout(username: str) -> str | None:
+    """检查用户是否被登录锁定。
+
+    Args:
+        username: 用户名。
+
+    Returns:
+        未锁定返回 None，锁定中返回错误描述字符串。
+    """
+    if username not in _LOGIN_FAILURES:
+        return None
+
+    failures, lockout_until = _LOGIN_FAILURES[username]
+
+    # 检查锁定是否已过期
+    if lockout_until > 0 and time.time() > lockout_until:
+        del _LOGIN_FAILURES[username]
+        return None
+
+    if failures >= _MAX_LOGIN_ATTEMPTS:
+        remaining = max(0, int(lockout_until - time.time()))
+        return f"账户已被锁定，请{remaining // 60}分{remaining % 60}秒后重试"
+
+    return None
+
+
+def record_login_failure(username: str) -> bool:
+    """记录一次登录失败。
+
+    Args:
+        username: 用户名。
+
+    Returns:
+        True 表示用户已被锁定，False 表示仍可重试。
+    """
+    if username not in _LOGIN_FAILURES:
+        _LOGIN_FAILURES[username] = (1, 0)
+    else:
+        failures, _ = _LOGIN_FAILURES[username]
+        _LOGIN_FAILURES[username] = (failures + 1, 0)
+
+    failures, _ = _LOGIN_FAILURES[username]
+
+    if failures >= _MAX_LOGIN_ATTEMPTS:
+        _LOGIN_FAILURES[username] = (
+            failures,
+            time.time() + _LOCKOUT_MINUTES * 60,
+        )
+        return True
+
+    return False
+
+
+def reset_login_failures(username: str) -> None:
+    """登录成功后重置失败计数器。
+
+    Args:
+        username: 用户名。
+    """
+    _LOGIN_FAILURES.pop(username, None)
 
 
 # ==================== JWT 令牌 ====================
@@ -147,6 +267,61 @@ def decode_access_token(token: str) -> dict:
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail={"error": "无效的认证令牌", "code": "invalid_token"},
         )
+    return payload
+
+
+def create_refresh_token(user_id: str) -> str:
+    """创建 JWT refresh token（仅包含 user_id，长过期时间）。
+
+    Args:
+        user_id: 用户 UUID 字符串。
+
+    Returns:
+        JWT refresh token 字符串。
+    """
+    now = datetime.now(timezone.utc)
+    expires_delta = timedelta(days=_get_refresh_token_expire_days())
+    payload = {
+        "sub": user_id,
+        "iat": now,
+        "exp": now + expires_delta,
+        "jti": uuid.uuid4().hex[:12],
+        "type": "refresh",
+    }
+    return jwt.encode(payload, _get_jwt_secret(), algorithm=ALGORITHM)
+
+
+def decode_refresh_token(token: str) -> dict:
+    """解码并验证 refresh token。
+
+    Args:
+        token: JWT refresh token 字符串。
+
+    Returns:
+        解码后的 payload 字典。
+
+    Raises:
+        HTTPException: token 无效、过期或类型不正确。
+    """
+    try:
+        payload = jwt.decode(token, _get_jwt_secret(), algorithms=[ALGORITHM])
+    except jwt.ExpiredSignatureError:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail={"error": "刷新令牌已过期，请重新登录", "code": "refresh_token_expired"},
+        )
+    except jwt.InvalidTokenError:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail={"error": "无效的刷新令牌", "code": "invalid_refresh_token"},
+        )
+
+    if payload.get("type") != "refresh":
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail={"error": "令牌类型不正确", "code": "invalid_token_type"},
+        )
+
     return payload
 
 

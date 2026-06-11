@@ -1,4 +1,5 @@
 import { useMemo } from "react";
+import { useTranslation } from "react-i18next";
 import { useDashboard } from "@/hooks/useReports";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -21,6 +22,7 @@ const CHART_COLORS = [
 ];
 
 export function DashboardPage() {
+  const { t } = useTranslation();
   const days = 30;
   const { data, isLoading } = useDashboard(days);
 
@@ -72,12 +74,12 @@ export function DashboardPage() {
     return (
       <div className="space-y-6">
         <div className="flex items-center justify-between">
-          <h1 className="text-2xl font-bold">报告看板</h1>
+          <h1 className="text-2xl font-bold">{t("dashboard.title")}</h1>
         </div>
         <Card>
           <CardContent className="py-12 text-center text-muted-foreground">
-            <p className="text-lg mb-1">暂无报告数据</p>
-            <p className="text-sm">执行测试后将自动生成报告</p>
+            <p className="text-lg mb-1">{t("dashboard.noData")}</p>
+            <p className="text-sm">{t("dashboard.noDataHint")}</p>
           </CardContent>
         </Card>
       </div>
@@ -88,7 +90,7 @@ export function DashboardPage() {
     <div className="space-y-6">
       {/* Header */}
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold">报告看板</h1>
+        <h1 className="text-2xl font-bold">{t("dashboard.title")}</h1>
       </div>
 
       {/* KPI Cards */}
@@ -96,27 +98,27 @@ export function DashboardPage() {
         <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
           <Card>
             <CardContent className="pt-5">
-              <p className="text-sm text-muted-foreground">当前通过率</p>
+              <p className="text-sm text-muted-foreground">{t("dashboard.currentPassRate")}</p>
               <p className="text-2xl font-bold mt-1 text-emerald-600">
                 {kpis.currentRate.toFixed(1)}%
               </p>
               <p className="text-xs text-muted-foreground mt-1">
-                最近 {days} 天
+                {t("dashboard.recentDays", { days })}
               </p>
             </CardContent>
           </Card>
           <Card>
             <CardContent className="pt-5">
-              <p className="text-sm text-muted-foreground">平均通过率</p>
+              <p className="text-sm text-muted-foreground">{t("dashboard.avgPassRate")}</p>
               <p className="text-2xl font-bold mt-1">{kpis.avgRate.toFixed(1)}%</p>
               <p className="text-xs text-muted-foreground mt-1">
-                {passRateTrend.length} 个数据点
+                {passRateTrend.length} {t("dashboard.dataPoints")}
               </p>
             </CardContent>
           </Card>
           <Card>
             <CardContent className="pt-5">
-              <p className="text-sm text-muted-foreground">趋势变化</p>
+              <p className="text-sm text-muted-foreground">{t("dashboard.trendChange")}</p>
               <div className="flex items-center gap-1 mt-1">
                 {kpis.deltaRate > 0 ? (
                   <TrendingUp className="h-5 w-5 text-emerald-500" />
@@ -131,23 +133,23 @@ export function DashboardPage() {
                   {kpis.deltaRate > 0 ? "+" : ""}{kpis.deltaRate.toFixed(1)}%
                 </span>
               </div>
-              <p className="text-xs text-muted-foreground mt-1">较前半段</p>
+              <p className="text-xs text-muted-foreground mt-1">{t("dashboard.vsFirstHalf")}</p>
             </CardContent>
           </Card>
           <Card>
             <CardContent className="pt-5">
-              <p className="text-sm text-muted-foreground">不稳定用例</p>
+              <p className="text-sm text-muted-foreground">{t("dashboard.unstableCases")}</p>
               <p className="text-2xl font-bold mt-1 text-destructive">
                 {topFailures.length}
               </p>
-              <p className="text-xs text-muted-foreground mt-1">个高频失败</p>
+              <p className="text-xs text-muted-foreground mt-1">{t("dashboard.highFreqFailures")}</p>
             </CardContent>
           </Card>
           <Card>
             <CardContent className="pt-5">
-              <p className="text-sm text-muted-foreground">失败总数</p>
+              <p className="text-sm text-muted-foreground">{t("dashboard.totalFailures")}</p>
               <p className="text-2xl font-bold mt-1">{failureTotal}</p>
-              <p className="text-xs text-muted-foreground mt-1">次</p>
+              <p className="text-xs text-muted-foreground mt-1">{t("dashboard.times")}</p>
             </CardContent>
           </Card>
         </div>
@@ -157,7 +159,7 @@ export function DashboardPage() {
         {/* Pass Rate Trend - 3/5 width */}
         <Card className="lg:col-span-3">
           <CardHeader>
-            <CardTitle className="text-base">通过率趋势</CardTitle>
+            <CardTitle className="text-base">{t("dashboard.passRateTrend")}</CardTitle>
           </CardHeader>
           <CardContent>
             {passRateTrend.length > 0 ? (
@@ -178,7 +180,7 @@ export function DashboardPage() {
                   />
                   <YAxis domain={[0, 100]} tick={{ fontSize: 12 }} unit="%" />
                   <Tooltip
-                    formatter={(value: number) => [`${value.toFixed(1)}%`, "通过率"]}
+                    formatter={(value: number) => [`${value.toFixed(1)}%`, t("dashboard.passRateTrend")]}
                   />
                   <Area
                     type="monotone"
@@ -191,7 +193,7 @@ export function DashboardPage() {
               </ResponsiveContainer>
             ) : (
               <div className="h-[320px] flex items-center justify-center text-muted-foreground">
-                暂无趋势数据
+                {t("dashboard.noTrendData")}
               </div>
             )}
           </CardContent>
@@ -200,7 +202,7 @@ export function DashboardPage() {
         {/* Top Failures - 2/5 width */}
         <Card className="lg:col-span-2">
           <CardHeader>
-            <CardTitle className="text-base">失败最多的用例</CardTitle>
+            <CardTitle className="text-base">{t("dashboard.topFailures")}</CardTitle>
           </CardHeader>
           <CardContent>
             {failureCategories.length > 0 ? (
@@ -220,7 +222,7 @@ export function DashboardPage() {
                           <span className="truncate font-medium">{item.name}</span>
                         </div>
                         <span className="shrink-0 text-xs text-muted-foreground ml-2">
-                          {item.count} 次
+                          {item.count} {t("dashboard.times")}
                         </span>
                       </div>
                       <Progress
@@ -238,7 +240,7 @@ export function DashboardPage() {
               </div>
             ) : (
               <div className="h-[320px] flex items-center justify-center text-muted-foreground">
-                暂无失败数据
+                {t("dashboard.noFailureData")}
               </div>
             )}
           </CardContent>
