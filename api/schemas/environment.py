@@ -89,7 +89,7 @@ class EnvironmentResponse(BaseModel):
     description: str | None = Field(default=None, description="环境描述")
     base_url: str | None = Field(default=None, description="被测服务 HTTP 基础 URL")
     ws_url: str | None = Field(default=None, description="WebSocket 服务 URL")
-    variables: dict | None = Field(default=None, description="环境级变量字典")
+    variables: dict | None = Field(default=None, description="环境级变量字典（敏感字段已脱敏）")
     http_config: dict | None = Field(default=None, description="HTTP 客户端覆盖配置")
     created_at: datetime | None = Field(default=None, description="创建时间")
     updated_at: datetime | None = Field(default=None, description="更新时间")

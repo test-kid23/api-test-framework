@@ -3,6 +3,9 @@
 在执行失败时自动捕获三层变量状态（run/case/step）并持久化到 DB。
 支持脱敏处理，不存储敏感字段（token/password 等）。
 
+T5-12: 新增 Redis 缓存层 — 每个 step 结束时自动缓存快照到 Redis（1h TTL），
+执行结束后持久化到 DB。Redis 不可用时自动降级为仅存内存。
+
 Attributes:
     ContextSnapshot: 不可变快照对象
     ContextSnapshotManager: 快照管理器
@@ -23,6 +26,8 @@ from framework.persistence.models.context_snapshot import ContextSnapshotModel
 from framework.utils.logger import Logger
 
 if TYPE_CHECKING:
+    from redis.asyncio import Redis
+
     from framework.context import TestContext
     from framework.persistence.repositories.context_snapshot_repo import (
         ContextSnapshotRepository,
@@ -124,20 +129,33 @@ class ContextSnapshotManager:
     """上下文快照管理器.
 
     在执行失败时自动捕获三层变量状态并持久化到 DB。
+    支持 Redis 缓存层（T5-12）：每个 step 结束时缓存快照到 Redis，
+    Redis 不可用时自动降级为仅存内存。
 
     Attributes:
         SENSITIVE_KEY_PATTERNS: 需要脱敏的字段名模式列表
+        REDIS_CACHE_TTL: Redis 缓存过期时间（秒），默认 3600s（1h）
     """
 
     SENSITIVE_KEY_PATTERNS: list[re.Pattern] = _SENSITIVE_KEY_PATTERNS
+    REDIS_CACHE_TTL: int = 3600
+    _REDIS_KEY_PREFIX: str = "autotest:snapshot:"
 
-    def __init__(self, repo: ContextSnapshotRepository) -> None:
+    def __init__(
+        self,
+        repo: ContextSnapshotRepository,
+        redis_client: Redis | None = None,
+    ) -> None:
         """初始化.
 
         Args:
             repo: 快照 Repository
+            redis_client: Redis 异步客户端（可选，用于缓存快照）。
+                          为 None 时仅使用 DB 持久化。
         """
         self._repo = repo
+        self._redis = redis_client
+        self._redis_available: bool | None = None  # None = 未检测
 
     async def capture_on_failure(
         self,
@@ -206,12 +224,20 @@ class ContextSnapshotManager:
     async def get_snapshot(self, execution_id: uuid.UUID) -> ContextSnapshot | None:
         """查询快照.
 
+        优先从 Redis 缓存读取，未命中时回退 DB 查询。
+
         Args:
             execution_id: 执行 ID
 
         Returns:
             快照对象或 None
         """
+        # 优先 Redis 缓存
+        cached = await self.get_cached_snapshot(str(execution_id))
+        if cached is not None:
+            return cached
+
+        # 回退 DB
         model = await self._repo.get_by_execution(execution_id)
         if model is None:
             return None
@@ -225,3 +251,124 @@ class ContextSnapshotManager:
             error_message=model.error_message,
             traceback=model.traceback or "",
         )
+
+    # ── Redis 缓存方法 (T5-12) ────────────────────────
+
+    async def cache_step_snapshot(
+        self,
+        execution_id: str,
+        step_index: int,
+        run_vars: dict[str, Any],
+        case_vars: dict[str, Any],
+        step_vars: dict[str, Any],
+    ) -> None:
+        """将步骤快照缓存到 Redis（1h TTL）。
+
+        每个 step 结束时自动调用，将当前三层变量状态写入 Redis。
+        Redis 不可用时静默降级，不影响正常执行流程。
+
+        Args:
+            execution_id: 执行 ID 字符串。
+            step_index: 步骤索引。
+            run_vars: 运行级变量（原始）。
+            case_vars: 用例级变量（原始）。
+            step_vars: 步骤级变量（原始）。
+        """
+        if self._redis is None:
+            return
+
+        if not await self._ensure_redis_available():
+            return
+
+        try:
+            # 脱敏后缓存
+            snapshot_data = {
+                "execution_id": execution_id,
+                "step_index": step_index,
+                "run_vars": _mask_sensitive_vars(run_vars),
+                "case_vars": _mask_sensitive_vars(case_vars),
+                "step_vars": _mask_sensitive_vars(step_vars),
+                "cached_at": datetime.now(timezone.utc).isoformat(),
+            }
+
+            key = f"{self._REDIS_KEY_PREFIX}{execution_id}"
+            await self._redis.set(
+                key,
+                json.dumps(snapshot_data, default=str),
+                ex=self.REDIS_CACHE_TTL,
+            )
+
+            _log.debug(
+                "step_snapshot_cached",
+                execution_id=execution_id,
+                step_index=step_index,
+            )
+        except Exception as e:
+            _log.debug(
+                "step_snapshot_cache_failed",
+                execution_id=execution_id,
+                error=str(e),
+            )
+
+    async def get_cached_snapshot(self, execution_id: str) -> ContextSnapshot | None:
+        """从 Redis 获取缓存的快照。
+
+        Args:
+            execution_id: 执行 ID 字符串。
+
+        Returns:
+            快照或 None（缓存未命中/Redis 不可用）。
+        """
+        if self._redis is None:
+            return None
+
+        if not await self._ensure_redis_available():
+            return None
+
+        try:
+            key = f"{self._REDIS_KEY_PREFIX}{execution_id}"
+            raw = await self._redis.get(key)
+            if raw is None:
+                return None
+
+            data = json.loads(raw)
+            return ContextSnapshot(
+                execution_id=data["execution_id"],
+                step_index=data["step_index"],
+                run_vars=MappingProxyType(data.get("run_vars", {})),
+                case_vars=MappingProxyType(data.get("case_vars", {})),
+                step_vars=MappingProxyType(data.get("step_vars", {})),
+                error_message="",
+                traceback="",
+            )
+        except Exception as e:
+            _log.debug(
+                "cached_snapshot_read_failed",
+                execution_id=execution_id,
+                error=str(e),
+            )
+            return None
+
+    async def _ensure_redis_available(self) -> bool:
+        """检查 Redis 是否可用（带缓存检测结果）。
+
+        Returns:
+            True 表示 Redis 可用。
+        """
+        if self._redis is None:
+            return False
+
+        if self._redis_available is not None:
+            return self._redis_available
+
+        try:
+            await self._redis.ping()
+            self._redis_available = True
+            return True
+        except Exception as e:
+            _log.warning(
+                "redis_unavailable_snapshot_degraded",
+                error=str(e),
+            )
+            self._redis_available = False
+            return False

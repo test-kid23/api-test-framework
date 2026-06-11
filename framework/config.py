@@ -301,6 +301,7 @@ class ConfigLoader:
             case_timeout=raw.get("case_timeout", 300),
             jwt_secret=auth.get("jwt_secret", "autotest-default-secret-change-me"),
             jwt_expire_minutes=auth.get("token_expire_minutes", 480),
+            datasources=raw.get("datasources", {}),
         )
 
     def _build_env_config(self, name: str, raw: dict[str, Any]) -> EnvConfig:
@@ -312,6 +313,7 @@ class ConfigLoader:
             variables=raw.get("variables", {}),
             http=raw.get("http", {}),
             db=raw.get("db", {}),
+            datasources=raw.get("datasources", {}),
             ws=raw.get("ws", {}),
         )
 

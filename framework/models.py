@@ -259,6 +259,31 @@ class AssertItem:
 
 
 @dataclass
+class CompositeAssertItem:
+    """组合断言项 — 支持 AND/OR 嵌套组合多个子断言.
+
+    Attributes:
+        combinator: 组合逻辑（"all_of" 表示 AND，"any_of" 表示 OR）。
+        children: 子断言项列表（可以是 AssertItem 或其他 CompositeAssertItem）。
+        message: 自定义失败消息。
+
+    Note:
+        子断言可以是普通 AssertItem 或嵌套的 CompositeAssertItem，
+        支持任意深度嵌套。
+    """
+
+    combinator: str  # "all_of" | "any_of"
+    children: list[AssertItem | CompositeAssertItem] = field(default_factory=list)
+    message: str = ""
+
+    def __post_init__(self) -> None:
+        if self.combinator not in ("all_of", "any_of"):
+            raise ValueError(
+                f"combinator 必须为 'all_of' 或 'any_of'，实际为 '{self.combinator}'"
+            )
+
+
+@dataclass
 class AssertResult:
     """单个断言结果
 
@@ -291,7 +316,7 @@ class AssertionReport:
     """用例断言报告
 
     Attributes:
-        results: 所有断言项的逐条结果。
+        results: 所有断言项的逐条结果（扁平化收集）。
     """
 
     results: list[AssertResult] = field(default_factory=list)
@@ -322,16 +347,18 @@ class ExtractItem:
     Attributes:
         var_name: 提取结果存储的变量名。
         source: 提取表达式（JSONPath/header 名/正则等）。
-        source_type: 提取源类型（jsonpath/header/body_regex/status_code/elapsed/sql_column）。
+        source_type: 提取源类型（jsonpath/header/body_regex/status_code/elapsed/sql_column/pipeline）。
         default: 提取失败时的默认值。
+        pipeline: 可选的提取管道步骤列表（当 source_type="pipeline" 时使用）。
     """
 
     var_name: str
     source: str
     source_type: str = (
-        "jsonpath"  # jsonpath / header / body_regex / status_code / elapsed / sql_column
+        "jsonpath"  # jsonpath / header / body_regex / status_code / elapsed / sql_column / pipeline
     )
     default: Any = None
+    pipeline: list[dict[str, Any]] | None = None
 
 
 # ==================== 数据库 ====================
@@ -427,7 +454,7 @@ class TestCase:
     ws_config: WSConfig | None = None
     grpc_config: GrpcConfig | None = None
 
-    assertions: list[AssertItem] = field(default_factory=list)
+    assertions: list[AssertItem | CompositeAssertItem] = field(default_factory=list)
     extracts: list[ExtractItem] = field(default_factory=list)
     db_asserts: list[DBAssertItem] = field(default_factory=list)
 
@@ -489,6 +516,7 @@ class EnvConfig:
     variables: dict[str, Any] = field(default_factory=dict)
     http: dict[str, Any] = field(default_factory=dict)
     db: dict[str, dict[str, Any]] = field(default_factory=dict)
+    datasources: dict[str, Any] = field(default_factory=dict)
     ws: dict[str, Any] = field(default_factory=dict)
 
 
@@ -520,6 +548,7 @@ class ProjectConfig:
     assertion: dict[str, Any] = field(default_factory=dict)
     execution: dict[str, Any] = field(default_factory=dict)
     db: dict[str, dict[str, Any]] = field(default_factory=dict)
+    datasources: dict[str, Any] = field(default_factory=dict)
     fixtures: dict[str, Any] = field(default_factory=dict)
     notifications: dict[str, Any] = field(default_factory=dict)
     persistence: dict[str, Any] = field(default_factory=dict)

@@ -201,6 +201,256 @@ class ReportService:
             for row in rows
         ]
 
+    # ── 通过率趋势（支持粒度） ──────────────────────────
+
+    async def get_pass_rate_trend_with_granularity(
+        self,
+        days: int = 30,
+        granularity: str = "day",
+        suite_id: uuid.UUID | None = None,
+    ) -> list[dict[str, Any]]:
+        """查询指定时间范围内的通过率趋势，支持 day/week/month 粒度.
+
+        对 week/month 粒度，使用 strftime 格式化日期到周/月级别。
+
+        Args:
+            days: 统计时间范围（天）.
+            granularity: 粒度 (day/week/month).
+            suite_id: 按套件 ID 过滤（可选）.
+
+        Returns:
+            [{date, total, passed, failed, pass_rate, avg_elapsed_ms}, ...]
+        """
+        if granularity == "day":
+            return await self.get_pass_rate_trend(days=days, suite_id=suite_id)
+
+        start = _days_ago_utc(days)
+
+        if granularity == "week":
+            # 按 ISO 周分组: %Y-%W
+            date_format = "%Y-%W"
+        else:
+            # month: %Y-%m
+            date_format = "%Y-%m"
+
+        if suite_id is not None:
+            sql = sa_text(f"""
+                SELECT
+                    STRFTIME('{date_format}', er.created_at) AS date,
+                    COUNT(*) AS total,
+                    SUM(CASE WHEN er.passed THEN 1 ELSE 0 END) AS passed,
+                    SUM(CASE WHEN NOT er.passed THEN 1 ELSE 0 END) AS failed,
+                    CAST(SUM(CASE WHEN er.passed THEN 1 ELSE 0 END) AS FLOAT)
+                        / COUNT(*) AS pass_rate,
+                    AVG(er.elapsed_ms) AS avg_elapsed_ms
+                FROM execution_results er
+                JOIN executions e ON er.execution_id = e.id
+                WHERE er.created_at >= :start AND e.suite_id = :suite_id
+                GROUP BY STRFTIME('{date_format}', er.created_at)
+                ORDER BY STRFTIME('{date_format}', er.created_at) ASC
+            """)
+            params = {"start": start, "suite_id": str(suite_id)}
+        else:
+            sql = sa_text(f"""
+                SELECT
+                    STRFTIME('{date_format}', created_at) AS date,
+                    COUNT(*) AS total,
+                    SUM(CASE WHEN passed THEN 1 ELSE 0 END) AS passed,
+                    SUM(CASE WHEN NOT passed THEN 1 ELSE 0 END) AS failed,
+                    CAST(SUM(CASE WHEN passed THEN 1 ELSE 0 END) AS FLOAT)
+                        / COUNT(*) AS pass_rate,
+                    AVG(elapsed_ms) AS avg_elapsed_ms
+                FROM execution_results
+                WHERE created_at >= :start
+                GROUP BY STRFTIME('{date_format}', created_at)
+                ORDER BY STRFTIME('{date_format}', created_at) ASC
+            """)
+            params = {"start": start}
+
+        result = await self._session.execute(sql, params)
+        rows = result.all()
+
+        return [
+            {
+                "date": str(row.date),
+                "total": row.total,
+                "passed": row.passed or 0,
+                "failed": row.failed or 0,
+                "pass_rate": round(row.pass_rate or 0.0, 4),
+                "avg_elapsed_ms": round(row.avg_elapsed_ms or 0.0, 2),
+            }
+            for row in rows
+        ]
+
+    # ── 每日响应时间分位数趋势 ──────────────────────────
+
+    async def get_response_time_percentiles_trend(
+        self,
+        days: int = 30,
+        suite_id: uuid.UUID | None = None,
+    ) -> list[dict[str, Any]]:
+        """查询每日响应时间分位数 P50/P90/P95/P99.
+
+        先获取每天所有 elapsed_ms 值，然后在 Python 内存中计算分位数。
+        这是为了兼容 SQLite / PostgreSQL 的通用实现。
+
+        Args:
+            days: 统计时间范围（天）.
+            suite_id: 按套件 ID 过滤（可选）.
+
+        Returns:
+            [{date, p50, p90, p95, p99, avg, min, max, total}, ...]
+        """
+        start = _days_ago_utc(days)
+
+        if suite_id is not None:
+            sql = sa_text("""
+                SELECT
+                    DATE(er.created_at) AS date,
+                    er.elapsed_ms
+                FROM execution_results er
+                JOIN executions e ON er.execution_id = e.id
+                WHERE er.created_at >= :start
+                  AND er.elapsed_ms IS NOT NULL
+                  AND e.suite_id = :suite_id
+                ORDER BY DATE(er.created_at) ASC
+            """)
+            params = {"start": start, "suite_id": str(suite_id)}
+        else:
+            sql = sa_text("""
+                SELECT
+                    DATE(created_at) AS date,
+                    elapsed_ms
+                FROM execution_results
+                WHERE created_at >= :start AND elapsed_ms IS NOT NULL
+                ORDER BY DATE(created_at) ASC
+            """)
+            params = {"start": start}
+
+        result = await self._session.execute(sql, params)
+        rows = result.all()
+
+        if not rows:
+            return []
+
+        # 按日期分组
+        from collections import defaultdict
+        date_values: dict[str, list[float]] = defaultdict(list)
+        for row in rows:
+            date_values[str(row.date)].append(float(row.elapsed_ms))
+
+        def _percentile(sorted_vals: list[float], pct: float) -> float:
+            n = len(sorted_vals)
+            k = (pct / 100.0) * (n - 1)
+            f = int(k)
+            c = k - f
+            if f + 1 < n:
+                return round(sorted_vals[f] + c * (sorted_vals[f + 1] - sorted_vals[f]), 2)
+            return round(sorted_vals[f], 2)
+
+        results: list[dict[str, Any]] = []
+        for date_str in sorted(date_values.keys()):
+            vals = sorted(date_values[date_str])
+            n = len(vals)
+            results.append({
+                "date": date_str,
+                "p50": _percentile(vals, 50),
+                "p90": _percentile(vals, 90),
+                "p95": _percentile(vals, 95),
+                "p99": _percentile(vals, 99),
+                "avg": round(sum(vals) / n, 2),
+                "min": round(vals[0], 2),
+                "max": round(vals[-1], 2),
+                "total": n,
+            })
+
+        return results
+
+    # ── 不稳定接口 ──────────────────────────────────────
+
+    async def get_unstable_endpoints(
+        self,
+        days: int = 30,
+        threshold: float = 0.8,
+        suite_id: uuid.UUID | None = None,
+    ) -> list[dict[str, Any]]:
+        """查询通过率低于阈值的接口（不稳定接口）.
+
+        按 case_name 分组，统计每个接口的通过率，返回低于 threshold 的接口。
+        仅统计至少有 5 次执行记录的接口，避免样本过少导致误判。
+
+        Args:
+            days: 统计时间范围（天）.
+            threshold: 通过率阈值（0-1），低于此值的视为不稳定.
+            suite_id: 按套件 ID 过滤（可选）.
+
+        Returns:
+            [{case_name, case_id, total, passed, failed, pass_rate, avg_elapsed_ms}, ...]
+        """
+        start = _days_ago_utc(days)
+        params: dict[str, Any] = {
+            "start": start,
+            "threshold": threshold,
+            "min_runs": 5,
+        }
+
+        if suite_id is not None:
+            params["suite_id"] = str(suite_id)
+            sql = sa_text("""
+                SELECT
+                    er.case_name,
+                    er.case_id,
+                    COUNT(*) AS total,
+                    SUM(CASE WHEN er.passed THEN 1 ELSE 0 END) AS passed,
+                    SUM(CASE WHEN NOT er.passed THEN 1 ELSE 0 END) AS failed,
+                    CAST(SUM(CASE WHEN er.passed THEN 1 ELSE 0 END) AS FLOAT)
+                        / COUNT(*) AS pass_rate,
+                    AVG(er.elapsed_ms) AS avg_elapsed_ms
+                FROM execution_results er
+                JOIN executions e ON er.execution_id = e.id
+                WHERE er.created_at >= :start AND e.suite_id = :suite_id
+                GROUP BY er.case_name, er.case_id
+                HAVING COUNT(*) >= :min_runs
+                   AND CAST(SUM(CASE WHEN er.passed THEN 1 ELSE 0 END) AS FLOAT)
+                       / COUNT(*) < :threshold
+                ORDER BY pass_rate ASC
+            """)
+        else:
+            sql = sa_text("""
+                SELECT
+                    case_name,
+                    case_id,
+                    COUNT(*) AS total,
+                    SUM(CASE WHEN passed THEN 1 ELSE 0 END) AS passed,
+                    SUM(CASE WHEN NOT passed THEN 1 ELSE 0 END) AS failed,
+                    CAST(SUM(CASE WHEN passed THEN 1 ELSE 0 END) AS FLOAT)
+                        / COUNT(*) AS pass_rate,
+                    AVG(elapsed_ms) AS avg_elapsed_ms
+                FROM execution_results
+                WHERE created_at >= :start
+                GROUP BY case_name, case_id
+                HAVING COUNT(*) >= :min_runs
+                   AND CAST(SUM(CASE WHEN passed THEN 1 ELSE 0 END) AS FLOAT)
+                       / COUNT(*) < :threshold
+                ORDER BY pass_rate ASC
+            """)
+
+        result = await self._session.execute(sql, params)
+        rows = result.all()
+
+        return [
+            {
+                "case_name": row.case_name or "",
+                "case_id": str(row.case_id) if row.case_id else "",
+                "total": row.total,
+                "passed": row.passed or 0,
+                "failed": row.failed or 0,
+                "pass_rate": round(row.pass_rate or 0.0, 4),
+                "avg_elapsed_ms": round(row.avg_elapsed_ms or 0.0, 2),
+            }
+            for row in rows
+        ]
+
     # ── Top N 失败用例 ──────────────────────────────────
 
     async def get_top_failures(

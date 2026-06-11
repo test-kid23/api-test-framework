@@ -1,13 +1,18 @@
 """报告查询路由
 
 接口:
-- GET /api/v1/reports              报告列表
-- GET /api/v1/reports/{id}         报告详情
-- GET /api/v1/reports/trends       趋势数据
-- GET /api/v1/reports/top-failures Top N 失败用例
+- GET /api/v1/reports                     报告列表
+- GET /api/v1/reports/{id}                报告详情
+- GET /api/v1/reports/trends              趋势数据
+- GET /api/v1/reports/trend/pass-rate     通过率趋势（支持 day/week/month 粒度）
+- GET /api/v1/reports/trend/response-time 响应时间分位数趋势
+- GET /api/v1/reports/failure-categories  失败原因分类
+- GET /api/v1/reports/unstable-endpoints  不稳定接口
+- GET /api/v1/reports/top-failures        Top N 失败用例
 
 所有接口已切换到数据库查询。
 趋势和 Top N 失败使用 ReportService（已有实现）。
+失败分类和不稳定接口使用 AnalyticsService。
 """
 
 from __future__ import annotations
@@ -29,14 +34,21 @@ from api.schemas.common import (
     SuccessResponse,
 )
 from api.schemas.report import (
+    FailureCategoryItem,
+    FailureCategoryResponse,
     ReportListItem,
+    ResponseTimeTrendItem,
+    ResponseTimeTrendResponse,
     TopFailure,
     TopFailuresResponse,
     TrendItem,
     TrendResponse,
+    UnstableEndpointItem,
+    UnstableEndpointResponse,
 )
 from framework.persistence.models.execution import ExecutionModel
 from framework.persistence.models.report import ReportModel
+from framework.persistence.services.analytics_service import AnalyticsService
 from framework.persistence.services.report_service import ReportService
 
 router = APIRouter(prefix="/api/v1/reports", tags=["reports"])
@@ -53,6 +65,19 @@ def _parse_summary(summary_json: str | None) -> dict:
         return json.loads(summary_json)
     except (json.JSONDecodeError, TypeError):
         return {}
+
+
+def _parse_suite_id(suite_id: str | None) -> uuid.UUID | None:
+    """解析 suite_id 参数."""
+    if not suite_id:
+        return None
+    try:
+        return uuid.UUID(suite_id)
+    except ValueError:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"suite_id 格式无效: {suite_id}",
+        )
 
 
 # ── GET /reports ──────────────────────────────────────────
@@ -166,16 +191,7 @@ async def get_trends(
     返回每天的总用例数、通过数、失败数、通过率、平均耗时。
     支持按 suite_id 过滤，仅统计该套件下的执行结果。
     """
-    suite_uuid: uuid.UUID | None = None
-    if suite_id:
-        try:
-            suite_uuid = uuid.UUID(suite_id)
-        except ValueError:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"suite_id 格式无效: {suite_id}",
-            )
-
+    suite_uuid = _parse_suite_id(suite_id)
     service = ReportService(session)
     rows = await service.get_pass_rate_trend(days=days, suite_id=suite_uuid)
 
@@ -191,6 +207,176 @@ async def get_trends(
         for r in rows
     ]
     return SuccessResponse(data=TrendResponse(days=days, items=items))
+
+
+# ── GET /reports/trend/pass-rate ──────────────────────────
+
+
+@router.get(
+    "/trend/pass-rate",
+    response_model=SuccessResponse[TrendResponse],
+    summary="通过率趋势（支持粒度）",
+)
+async def get_pass_rate_trend(
+    days: int = Query(default=30, ge=1, le=365, description="统计天数"),
+    granularity: str = Query(
+        default="day",
+        pattern="^(day|week|month)$",
+        description="粒度: day/week/month",
+    ),
+    suite_id: Optional[str] = Query(
+        default=None,
+        description="按套件 ID 过滤（UUID 格式）",
+    ),
+    session: AsyncSession = Depends(get_db_session),
+):
+    """查询通过率趋势，支持 day/week/month 三种粒度。
+
+    - day: 按天聚合
+    - week: 按 ISO 周聚合
+    - month: 按月聚合
+    """
+    suite_uuid = _parse_suite_id(suite_id)
+    service = ReportService(session)
+    rows = await service.get_pass_rate_trend_with_granularity(
+        days=days, granularity=granularity, suite_id=suite_uuid
+    )
+
+    items = [
+        TrendItem(
+            date=r["date"],
+            total=r["total"],
+            passed=r["passed"],
+            failed=r["failed"],
+            pass_rate=r["pass_rate"],
+            avg_elapsed_ms=r["avg_elapsed_ms"],
+        )
+        for r in rows
+    ]
+    return SuccessResponse(data=TrendResponse(days=days, granularity=granularity, items=items))
+
+
+# ── GET /reports/trend/response-time ──────────────────────
+
+
+@router.get(
+    "/trend/response-time",
+    response_model=SuccessResponse[ResponseTimeTrendResponse],
+    summary="响应时间分位数趋势",
+)
+async def get_response_time_trend(
+    days: int = Query(default=30, ge=1, le=365, description="统计天数"),
+    suite_id: Optional[str] = Query(
+        default=None,
+        description="按套件 ID 过滤（UUID 格式）",
+    ),
+    session: AsyncSession = Depends(get_db_session),
+):
+    """查询每日响应时间分位数 P50/P90/P95/P99 趋势。
+
+    返回每天的分位数、平均值、最小值、最大值和样本数量。
+    """
+    suite_uuid = _parse_suite_id(suite_id)
+    service = ReportService(session)
+    rows = await service.get_response_time_percentiles_trend(
+        days=days, suite_id=suite_uuid
+    )
+
+    items = [
+        ResponseTimeTrendItem(
+            date=r["date"],
+            p50=r["p50"],
+            p90=r["p90"],
+            p95=r["p95"],
+            p99=r["p99"],
+            avg=r["avg"],
+            min=r["min"],
+            max=r["max"],
+            total=r["total"],
+        )
+        for r in rows
+    ]
+    return SuccessResponse(data=ResponseTimeTrendResponse(days=days, items=items))
+
+
+# ── GET /reports/failure-categories ───────────────────────
+
+
+@router.get(
+    "/failure-categories",
+    response_model=SuccessResponse[FailureCategoryResponse],
+    summary="失败原因分类",
+)
+async def get_failure_categories(
+    days: int = Query(default=30, ge=1, le=365, description="统计天数"),
+    suite_id: Optional[str] = Query(
+        default=None,
+        description="按套件 ID 过滤（UUID 格式）",
+    ),
+    session: AsyncSession = Depends(get_db_session),
+):
+    """对失败用例按原因进行分类统计。
+
+    分类: assertion_failure / connection_timeout / connection_error / http_error / other
+    """
+    suite_uuid = _parse_suite_id(suite_id)
+    service = AnalyticsService(session)
+    rows = await service.get_failure_categories(days=days, suite_id=suite_uuid)
+
+    items = [
+        FailureCategoryItem(
+            category=r["category"],
+            count=r["count"],
+            percentage=r["percentage"],
+        )
+        for r in rows
+    ]
+    return SuccessResponse(data=FailureCategoryResponse(days=days, items=items))
+
+
+# ── GET /reports/unstable-endpoints ───────────────────────
+
+
+@router.get(
+    "/unstable-endpoints",
+    response_model=SuccessResponse[UnstableEndpointResponse],
+    summary="不稳定接口",
+)
+async def get_unstable_endpoints(
+    days: int = Query(default=30, ge=1, le=365, description="统计天数"),
+    threshold: float = Query(
+        default=0.8,
+        ge=0.0,
+        le=1.0,
+        description="通过率阈值（低于此值视为不稳定）",
+    ),
+    suite_id: Optional[str] = Query(
+        default=None,
+        description="按套件 ID 过滤（UUID 格式）",
+    ),
+    session: AsyncSession = Depends(get_db_session),
+):
+    """查询通过率低于指定阈值的接口（不稳定接口）。
+
+    仅统计至少执行 5 次的接口，避免样本过少导致误判。
+    """
+    suite_uuid = _parse_suite_id(suite_id)
+    service = ReportService(session)
+    rows = await service.get_unstable_endpoints(
+        days=days, threshold=threshold, suite_id=suite_uuid
+    )
+
+    items = [
+        UnstableEndpointItem(
+            endpoint=r["case_name"],
+            pass_rate=r["pass_rate"],
+            total_runs=r["total"],
+        )
+        for r in rows
+    ]
+    return SuccessResponse(
+        data=UnstableEndpointResponse(days=days, threshold=threshold, items=items)
+    )
 
 
 # ── GET /reports/top-failures ─────────────────────────────
@@ -215,16 +401,7 @@ async def get_top_failures(
     按失败次数降序排列，包含最近失败时间和错误信息。
     支持按 suite_id 过滤。
     """
-    suite_uuid: uuid.UUID | None = None
-    if suite_id:
-        try:
-            suite_uuid = uuid.UUID(suite_id)
-        except ValueError:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"suite_id 格式无效: {suite_id}",
-            )
-
+    suite_uuid = _parse_suite_id(suite_id)
     service = ReportService(session)
     rows = await service.get_top_failures(limit=limit, suite_id=suite_uuid)
 

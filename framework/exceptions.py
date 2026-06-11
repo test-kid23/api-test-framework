@@ -404,6 +404,22 @@ class PluginLoadError(PluginError):
         self.detail = detail
 
 
+# ==================== 加密异常 ====================
+
+
+class DecryptionError(SecurityError):
+    """解密失败异常.
+
+    Attributes:
+        detail: 解密失败的具体原因。
+    """
+
+    def __init__(self, detail: str = "", *, trace_id: str = "") -> None:
+        msg = f"解密失败: {detail}" if detail else "解密失败"
+        super().__init__(msg, trace_id=trace_id)
+        self.detail = detail
+
+
 # ==================== 分布式执行异常 ====================
 
 

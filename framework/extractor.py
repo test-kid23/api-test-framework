@@ -7,6 +7,12 @@ import re
 from typing import Any
 
 from framework.exceptions import ExtractorError
+from framework.extract_pipeline import (
+    ExtractPipeline,
+    ExtractPipelineError,
+    ExtractStep,
+    ExtractStepType,
+)
 from framework.models import ExtractItem, HttpResponse
 from framework.utils.jsonpath_util import extract_value
 from framework.utils.logger import Logger
@@ -24,6 +30,7 @@ class Extractor:
     - status_code:  (直接取状态码)
     - elapsed:      (取响应时间 ms)
     - sql_column:   column_name (从 DB 查询结果提取)
+    - pipeline:     链式提取管道（jsonpath → regex → base64_decode → json_parse）
     """
 
     def extract(
@@ -48,6 +55,18 @@ class Extractor:
                     logger.warning("variable_extract_failed", var_name=item.var_name, reason="value is None with no default")
             except ExtractorError:
                 raise
+            except ExtractPipelineError as e:
+                if item.default is not None:
+                    results[item.var_name] = item.default
+                    logger.debug("pipeline_extract_fallback", var_name=item.var_name, default=item.default, error=str(e))
+                else:
+                    logger.error("pipeline_extract_error", var_name=item.var_name, error=str(e))
+                    raise ExtractorError(
+                        f"管道提取变量 '{item.var_name}' 失败: {e}",
+                        var_name=item.var_name,
+                        source=item.source,
+                        source_type=item.source_type,
+                    ) from e
             except (KeyError, IndexError, TypeError, json.JSONDecodeError) as e:
                 if item.default is not None:
                     results[item.var_name] = item.default
@@ -93,6 +112,9 @@ class Extractor:
         """从 HTTP 响应中提取单个变量"""
         source_type = item.source_type
 
+        if source_type == "pipeline":
+            return self._extract_with_pipeline(response.body, item)
+
         if source_type == "jsonpath":
             return self._extract_from_jsonpath(response.body, item.source)
 
@@ -119,6 +141,36 @@ class Extractor:
                 return self._extract_from_header(response.headers, item.source[7:])
             else:
                 return self._extract_from_jsonpath(response.body, item.source)
+
+    @staticmethod
+    def _extract_with_pipeline(body: Any, item: ExtractItem) -> Any:
+        """使用提取管道执行链式提取.
+
+        Args:
+            body: 响应体。
+            item: 包含 pipeline 定义的 ExtractItem。
+
+        Returns:
+            管道最终输出字符串。
+
+        Raises:
+            ExtractPipelineError: 管道执行失败时。
+        """
+        if not item.pipeline:
+            raise ExtractPipelineError(
+                "pipeline 配置为空",
+                step_type="pipeline",
+            )
+        steps = [
+            ExtractStep(
+                type=ExtractStepType(s["type"]),
+                expression=s.get("expression", ""),
+                group=s.get("group", 1),
+            )
+            for s in item.pipeline
+        ]
+        pipeline = ExtractPipeline(steps=steps)
+        return pipeline.execute(body)
 
     @staticmethod
     def _extract_from_jsonpath(body: Any, path: str) -> Any:

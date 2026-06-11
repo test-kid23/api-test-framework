@@ -119,6 +119,66 @@ class DBConfig(BaseModel):
     dsn: str = Field(default="", description="数据源连接字符串")
 
 
+class DataSourceConfig(BaseModel):
+    """业务数据源连接配置
+
+    用于 DBAction / DBAssertItem 中的数据库操作和断言，
+    支持 mysql、postgresql、sqlite 三种驱动。
+
+    连接参数可通过 OS 环境变量覆盖：
+    - AUTOTEST_DB_{NAME}_HOST、AUTOTEST_DB_{NAME}_PORT 等
+    """
+
+    model_config = ConfigDict(extra="ignore")
+
+    type: Literal["mysql", "postgresql", "sqlite"] = Field(
+        default="mysql", description="数据库类型"
+    )
+    host: str = Field(default="localhost", description="数据库主机地址")
+    port: int = Field(default=3306, ge=0, le=65535, description="数据库端口（SQLite 可设为 0）")
+    user: str = Field(default="root", description="数据库用户名")
+    password: str = Field(default="", description="数据库密码")
+    database: str = Field(default="test", description="数据库名称")
+    pool_size: int = Field(default=5, ge=1, le=50, description="连接池大小")
+    max_overflow: int = Field(default=10, ge=0, le=100, description="连接池最大溢出数")
+    pool_recycle: int = Field(default=3600, ge=60, description="连接回收时间（秒）")
+    echo: bool = Field(default=False, description="是否打印 SQL 日志")
+
+    def to_connection_dict(self) -> dict[str, object]:
+        """转换为 DBConnectionManager 所需的配置 dict 格式."""
+        return {
+            "type": self.type,
+            "host": self.host,
+            "port": self.port,
+            "user": self.user,
+            "password": self.password,
+            "database": self.database,
+            "pool_size": self.pool_size,
+            "max_overflow": self.max_overflow,
+            "pool_recycle": self.pool_recycle,
+            "echo": self.echo,
+        }
+
+
+class DataSourcesConfig(BaseModel):
+    """多数据源配置容器
+
+    以数据源名称（如 "main_db"、"secondary_db"）为 key，
+    每个数据源有独立的连接配置。
+
+    default: 默认数据源名称，DBAction/DBAssertItem 未指定 connection 时使用。
+    """
+
+    model_config = ConfigDict(extra="allow")
+
+    default: str = Field(
+        default="main_db", description="默认数据源名称"
+    )
+    main_db: DataSourceConfig = Field(
+        default_factory=DataSourceConfig, description="主数据源配置"
+    )
+
+
 class PersistenceConfig(BaseModel):
     """持久化配置
 
@@ -128,6 +188,31 @@ class PersistenceConfig(BaseModel):
     model_config = ConfigDict(extra="ignore")
 
     enabled: bool = Field(default=True, description="是否启用测试结果自动持久化到数据库")
+
+
+class PluginConfig(BaseModel):
+    """插件配置
+
+    控制插件的启用/禁用，支持三种模式：
+    - all: 加载所有发现的插件（默认）
+    - whitelist: 仅加载 enabled 列表中的插件
+    - blacklist: 加载所有插件，但排除 disabled 列表中的插件
+    """
+
+    model_config = ConfigDict(extra="ignore")
+
+    mode: Literal["all", "whitelist", "blacklist"] = Field(
+        default="all",
+        description="插件加载模式: all（全部加载）、whitelist（白名单）、blacklist（黑名单）",
+    )
+    enabled: list[str] = Field(
+        default_factory=list,
+        description="白名单：仅加载此列表中的插件（mode=whitelist 时生效）",
+    )
+    disabled: list[str] = Field(
+        default_factory=list,
+        description="黑名单：排除此列表中的插件（mode=blacklist 时生效）",
+    )
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -150,7 +235,11 @@ class AutotestConfig(BaseModel):
     report: ReportConfig = Field(default_factory=ReportConfig, description="报告配置")
     execution: ExecutionConfig = Field(default_factory=ExecutionConfig, description="执行配置")
     persistence: PersistenceConfig = Field(default_factory=PersistenceConfig, description="持久化配置")
+    plugins: PluginConfig = Field(default_factory=PluginConfig, description="插件配置")
     db: DBConfig = Field(default_factory=DBConfig, description="数据库配置")
+    datasources: DataSourcesConfig = Field(
+        default_factory=DataSourcesConfig, description="业务数据源配置（多数据源）"
+    )
     case_timeout: int = Field(
         default=300,
         ge=1,

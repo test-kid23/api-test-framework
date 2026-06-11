@@ -122,15 +122,19 @@ class PluginManager:
         self,
         context: PluginContext | None = None,
         plugin_dirs: list[str] | None = None,
+        plugin_config: object | None = None,
     ) -> None:
         """
         Args:
             context: 共享上下文（不传则自动创建）。
             plugin_dirs: 额外扫描目录（默认扫描 framework/plugins/）。
+            plugin_config: 插件配置（PluginConfig 或兼容对象），用于过滤插件。
+                          为 None 时加载所有插件。
         """
         self._plugins: list[PluginBase] = []
         self._plugin_map: dict[str, PluginBase] = {}
         self._context = context or PluginContext()
+        self._plugin_config = plugin_config
 
         # 默认扫描目录
         if plugin_dirs is None:
@@ -346,6 +350,18 @@ class PluginManager:
             if any(type(p) is obj for p in self._plugins):
                 continue
 
+            # ── 插件过滤（T5-07） ──
+            # 先实例化以获取 name()，然后根据配置决定是否注册
+            try:
+                temp_instance = obj()
+                plugin_name = temp_instance.name()
+            except Exception:
+                plugin_name = obj.__name__
+
+            if not self._should_load_plugin(plugin_name):
+                logger.debug(f"插件 '{plugin_name}' 被配置过滤，跳过加载")
+                continue
+
             try:
                 plugin_instance = obj()
                 self.register(plugin_instance)
@@ -354,6 +370,32 @@ class PluginManager:
                 logger.warning(f"实例化插件 '{obj.__name__}' 失败: {e}")
 
         return count
+
+    def _should_load_plugin(self, plugin_name: str) -> bool:
+        """根据配置判断插件是否应被加载。
+
+        Args:
+            plugin_name: 插件名称（name() 返回值）。
+
+        Returns:
+            True 表示应加载该插件。
+        """
+        if self._plugin_config is None:
+            return True
+
+        mode = getattr(self._plugin_config, "mode", "all")
+        enabled: list[str] = getattr(self._plugin_config, "enabled", [])
+        disabled: list[str] = getattr(self._plugin_config, "disabled", [])
+
+        if mode == "all":
+            return True
+        elif mode == "whitelist":
+            return plugin_name in enabled
+        elif mode == "blacklist":
+            return plugin_name not in disabled
+        else:
+            logger.warning(f"未知插件模式 '{mode}'，默认加载所有插件")
+            return True
 
     @staticmethod
     def _is_plugin_subclass(cls: type) -> bool:

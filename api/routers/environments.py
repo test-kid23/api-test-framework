@@ -36,15 +36,26 @@ _log = Logger.get("api.environments")
 # ── Helpers ───────────────────────────────────────────────
 
 
-def _orm_to_response(model: EnvironmentModel) -> EnvironmentResponse:
-    """将 ORM 模型转换为 API 响应。"""
+def _orm_to_response(model: EnvironmentModel, *, repo: EnvironmentRepository | None = None) -> EnvironmentResponse:
+    """将 ORM 模型转换为 API 响应（敏感字段自动脱敏）。
+
+    Args:
+        model: ORM 模型实例.
+        repo: 环境 Repository（用于脱敏），若为 None 则直接返回原始 variables.
+
+    Returns:
+        EnvironmentResponse 实例.
+    """
+    variables = model.variables
+    if repo is not None and variables is not None:
+        variables = repo.mask_variables(dict(variables))
     return EnvironmentResponse(
         id=str(model.id),
         name=model.name,
         description=model.description,
         base_url=model.base_url,
         ws_url=model.ws_url,
-        variables=model.variables,
+        variables=variables,
         http_config=model.http_config,
         created_at=model.created_at,
         updated_at=model.updated_at,
@@ -71,6 +82,7 @@ async def create_environment(
     """创建新的测试环境配置。
 
     环境名称必须全局唯一，否则返回 400 错误。
+    variables 中的敏感字段（password/token/api_key 等）自动加密存储。
     """
     repo = EnvironmentRepository(session)
 
@@ -92,6 +104,7 @@ async def create_environment(
     if current_user.primary_project_id:
         model.project_id = uuid.UUID(current_user.primary_project_id)
 
+    # create() 内部自动加密敏感字段
     created = await repo.create(model)
     await session.commit()
 
@@ -100,7 +113,7 @@ async def create_environment(
         env_id=str(created.id),
         name=created.name,
     )
-    return SuccessResponse(data=_orm_to_response(created))
+    return SuccessResponse(data=_orm_to_response(created, repo=repo))
 
 
 # ── GET /environments ────────────────────────────────────
@@ -117,7 +130,11 @@ async def list_environments(
     session: AsyncSession = Depends(get_db_session),
     current_user: CurrentUser = Depends(get_current_user),
 ):
-    """分页查询所有环境配置（按创建时间倒序）。"""
+    """分页查询所有环境配置（按创建时间倒序）。
+
+    返回的 variables 中敏感字段自动脱敏。
+    """
+    repo = EnvironmentRepository(session)
     stmt = select(EnvironmentModel)
 
     # 项目隔离：非 admin 用户只能看自己项目的环境
@@ -138,7 +155,7 @@ async def list_environments(
     result = await session.execute(stmt)
     items = result.scalars().all()
 
-    env_items = [_orm_to_response(m) for m in items]
+    env_items = [_orm_to_response(m, repo=repo) for m in items]
     meta = PaginationMeta(
         page=page,
         page_size=page_size,
@@ -161,7 +178,10 @@ async def get_environment(
     session: AsyncSession = Depends(get_db_session),
     current_user: CurrentUser = Depends(get_current_user),
 ):
-    """根据 ID 获取单个环境配置详情。"""
+    """根据 ID 获取单个环境配置详情。
+
+    返回的 variables 中敏感字段自动脱敏。
+    """
     try:
         uid = uuid.UUID(env_id)
     except ValueError:
@@ -173,7 +193,7 @@ async def get_environment(
         raise HTTPException(status_code=404, detail="环境不存在")
 
     check_project_access(str(model.project_id) if model.project_id else None, current_user, "环境")
-    return SuccessResponse(data=_orm_to_response(model))
+    return SuccessResponse(data=_orm_to_response(model, repo=repo))
 
 
 # ── PUT /environments/{env_id} ───────────────────────────
@@ -190,7 +210,10 @@ async def update_environment(
     session: AsyncSession = Depends(get_db_session),
     current_user: CurrentUser = Depends(require_role("admin", "editor")),
 ):
-    """更新环境配置。仅更新传入的非空字段。"""
+    """更新环境配置。仅更新传入的非空字段。
+
+    variables 中的敏感字段自动加密存储。
+    """
     update_data = body.model_dump(exclude_unset=True)
     if not update_data:
         raise HTTPException(status_code=400, detail="无更新字段")
@@ -225,15 +248,19 @@ async def update_environment(
     if body.ws_url is not None:
         model.ws_url = body.ws_url
     if body.variables is not None:
-        model.variables = body.variables
+        # 合并已有变量和新增变量，再加密
+        existing_vars = dict(model.variables) if model.variables else {}
+        existing_vars.update(body.variables)
+        model.variables = existing_vars
     if body.http_config is not None:
         model.http_config = body.http_config
 
+    # update() 内部自动加密敏感字段
     await repo.update(model)
     await session.commit()
 
     _log.info("env_updated", env_id=env_id)
-    return SuccessResponse(data=_orm_to_response(model))
+    return SuccessResponse(data=_orm_to_response(model, repo=repo))
 
 
 # ── DELETE /environments/{env_id} ────────────────────────

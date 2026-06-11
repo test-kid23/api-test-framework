@@ -161,11 +161,37 @@ notifications:
       use_tls: true
 
 # ----------------------------------------------------------
+# 插件配置（对应 PluginConfig Schema）
+# ----------------------------------------------------------
+plugins:
+  mode: all                              # 插件加载模式: all（全部加载）| whitelist（白名单）| blacklist（黑名单）
+  enabled: []                            # 白名单：仅加载此列表中的插件（mode=whitelist 时生效）
+  disabled: []                           # 黑名单：排除此列表中的插件（mode=blacklist 时生效）
+
+# ----------------------------------------------------------
 # 数据库配置（对应 DBConfig Schema）
 # ----------------------------------------------------------
 db:
   driver: sqlite                       # 数据库驱动: sqlite|mysql|postgresql
   dsn: ""                              # 数据源连接字符串
+
+# ----------------------------------------------------------
+# 业务数据源配置（对应 DataSourcesConfig Schema）
+# 用于 DBAction / DBAssertItem 中的数据库操作和断言
+# ----------------------------------------------------------
+datasources:
+  default: main_db                     # 默认数据源名称
+  main_db:
+    type: mysql                        # 数据库类型: mysql|postgresql|sqlite
+    host: localhost
+    port: 3306
+    user: root
+    password: ""
+    database: test
+    pool_size: 5
+    max_overflow: 10
+    pool_recycle: 3600
+    echo: false
 
 # ----------------------------------------------------------
 # 认证配置（JWT + RBAC）

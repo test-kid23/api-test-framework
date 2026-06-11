@@ -13,7 +13,13 @@ import re
 from types import MappingProxyType
 from typing import Any, Callable
 
-from framework.models import AssertionReport, AssertItem, AssertResult, HttpResponse
+from framework.models import (
+    AssertionReport,
+    AssertItem,
+    AssertResult,
+    CompositeAssertItem,
+    HttpResponse,
+)
 from framework.utils.jsonpath_util import extract_value
 from framework.utils.logger import Logger
 
@@ -238,30 +244,44 @@ class AssertionEngine:
     def assert_response(
         self,
         response: HttpResponse,
-        assertions: list[AssertItem],
+        assertions: list[AssertItem | CompositeAssertItem],
         variables: dict[str, Any] | None = None,
     ) -> AssertionReport:
-        """执行所有断言，返回断言报告"""
+        """执行所有断言（支持普通断言和组合断言），返回断言报告.
+
+        对普通 AssertItem 调用 _assert_single()；
+        对 CompositeAssertItem 调用 _assert_composite() 进行 AND/OR 短路求值。
+        所有子断言的结果会被扁平化收集到最终报告中。
+        """
         results: list[AssertResult] = []
 
         for item in assertions:
-            try:
-                result = self._assert_single(response, item, variables or {})
-                results.append(result)
-                if not result.passed:
-                    logger.warning("assertion_failed", path=result.path, expected=result.expected,
-                                   actual=result.actual, operator=result.operator)
-            except (AssertionError, TypeError, KeyError) as e:
-                results.append(
-                    AssertResult(
-                        passed=False,
-                        path=item.path,
-                        expected=item.expected,
-                        actual=None,
-                        operator=item.operator,
-                        message=f"断言执行异常: {e}",
+            if isinstance(item, CompositeAssertItem):
+                composite_results = self._assert_composite(response, item, variables or {})
+                results.extend(composite_results)
+            else:
+                try:
+                    result = self._assert_single(response, item, variables or {})
+                    results.append(result)
+                    if not result.passed:
+                        logger.warning(
+                            "assertion_failed",
+                            path=result.path,
+                            expected=result.expected,
+                            actual=result.actual,
+                            operator=result.operator,
+                        )
+                except (AssertionError, TypeError, KeyError) as e:
+                    results.append(
+                        AssertResult(
+                            passed=False,
+                            path=item.path,
+                            expected=item.expected,
+                            actual=None,
+                            operator=item.operator,
+                            message=f"断言执行异常: {e}",
+                        )
                     )
-                )
 
         report = AssertionReport(results=results)
         logger.info(
@@ -271,6 +291,90 @@ class AssertionEngine:
             failed=report.fail_count,
         )
         return report
+
+    def _assert_composite(
+        self,
+        response: HttpResponse,
+        composite: CompositeAssertItem,
+        variables: dict[str, Any],
+    ) -> list[AssertResult]:
+        """执行组合断言（AND/OR），支持短路求值和任意深度嵌套.
+
+        Args:
+            response: HTTP 响应对象。
+            composite: 组合断言项。
+            variables: 模板变量字典。
+
+        Returns:
+            所有子断言的扁平化结果列表。
+
+        AND 短路逻辑：遇到第一个失败即停止，后续子断言不再执行。
+        OR 短路逻辑：遇到第一个成功即停止，后续子断言不再执行。
+        """
+        results: list[AssertResult] = []
+        combinator = composite.combinator
+
+        for child in composite.children:
+            if isinstance(child, CompositeAssertItem):
+                child_results = self._assert_composite(response, child, variables)
+                results.extend(child_results)
+                # 短路判断：根据嵌套组合的 combinator 判断其整体通过/失败
+                child_passed = self._composite_passed(child.combinator, child_results)
+                if combinator == "all_of" and not child_passed:
+                    break
+                elif combinator == "any_of" and child_passed:
+                    break
+            else:
+                try:
+                    result = self._assert_single(response, child, variables)
+                    results.append(result)
+                    if not result.passed:
+                        logger.warning(
+                            "assertion_failed",
+                            path=result.path,
+                            expected=result.expected,
+                            actual=result.actual,
+                            operator=result.operator,
+                        )
+                    # 短路判断
+                    if combinator == "all_of" and not result.passed:
+                        break
+                    elif combinator == "any_of" and result.passed:
+                        break
+                except (AssertionError, TypeError, KeyError) as e:
+                    err_result = AssertResult(
+                        passed=False,
+                        path=child.path,
+                        expected=child.expected,
+                        actual=None,
+                        operator=child.operator,
+                        message=f"断言执行异常: {e}",
+                    )
+                    results.append(err_result)
+                    if combinator == "all_of":
+                        break
+
+        return results
+
+    @staticmethod
+    def _composite_passed(combinator: str, results: list[AssertResult]) -> bool:
+        """根据 combinator 判断组合断言整体是否通过.
+
+        Args:
+            combinator: "all_of" 或 "any_of"。
+            results: 该组合下已执行的所有子结果。
+
+        Returns:
+            all_of 时所有结果都通过才为 True；any_of 时任一结果通过即为 True。
+            空结果列表返回 False。
+        """
+        if not results:
+            return False
+        if combinator == "all_of":
+            return all(r.passed for r in results)
+        elif combinator == "any_of":
+            return any(r.passed for r in results)
+        return False
 
     def _assert_single(
         self,

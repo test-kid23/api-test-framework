@@ -15,6 +15,7 @@ import yaml
 from framework.models import (
     AssertItem,
     BodyType,
+    CompositeAssertItem,
     DBAssertItem,
     ExtractItem,
     FixtureAction,
@@ -315,9 +316,21 @@ class YAMLParser:
             reflection=raw.get("reflection", False),
         )
 
-    def _parse_assertions(self, expect: dict[str, Any]) -> list[AssertItem]:
-        """解析断言配置"""
-        items: list[AssertItem] = []
+    def _parse_assertions(self, expect: dict[str, Any]) -> list[AssertItem | CompositeAssertItem]:
+        """解析断言配置，支持普通断言和 all_of/any_of 组合断言."""
+        items: list[AssertItem | CompositeAssertItem] = []
+
+        # all_of 组合断言（AND）
+        if "all_of" in expect:
+            all_of_raw = expect["all_of"]
+            if isinstance(all_of_raw, list):
+                items.append(self._parse_composite_assertion(all_of_raw, "all_of"))
+
+        # any_of 组合断言（OR）
+        if "any_of" in expect:
+            any_of_raw = expect["any_of"]
+            if isinstance(any_of_raw, list):
+                items.append(self._parse_composite_assertion(any_of_raw, "any_of"))
 
         # 状态码断言
         if "status_code" in expect:
@@ -386,6 +399,49 @@ class YAMLParser:
 
         return items
 
+    def _parse_composite_assertion(
+        self, raw_children: list[dict[str, Any]], combinator: str
+    ) -> CompositeAssertItem:
+        """递归解析组合断言的子节点.
+
+        每个子节点可以是：
+        - 普通断言: {"path": "...", "expected": ..., "operator": "..."}
+        - 嵌套组合断言: {"all_of": [...]} 或 {"any_of": [...]}
+
+        Args:
+            raw_children: 子节点原始配置列表。
+            combinator: 组合逻辑（"all_of" / "any_of"）。
+
+        Returns:
+            解析后的组合断言项。
+        """
+        children: list[AssertItem | CompositeAssertItem] = []
+
+        for raw in raw_children:
+            if "all_of" in raw:
+                children.append(
+                    self._parse_composite_assertion(raw["all_of"], "all_of")
+                )
+            elif "any_of" in raw:
+                children.append(
+                    self._parse_composite_assertion(raw["any_of"], "any_of")
+                )
+            else:
+                path = raw.get("path", "")
+                expected = raw.get("expected", raw.get("value"))
+                operator = raw.get("operator", "eq")
+                message = raw.get("message", "")
+                children.append(
+                    AssertItem(
+                        path=path,
+                        expected=expected,
+                        operator=operator,
+                        message=message,
+                    )
+                )
+
+        return CompositeAssertItem(combinator=combinator, children=children)
+
     def _parse_body_assertions(
         self, body: dict[str, Any], prefix: str = "body"
     ) -> list[AssertItem]:
@@ -405,7 +461,7 @@ class YAMLParser:
         return items
 
     def _parse_extracts(self, raw: dict[str, Any]) -> list[ExtractItem]:
-        """解析变量提取配置"""
+        """解析变量提取配置，支持 pipeline 管道提取."""
         items: list[ExtractItem] = []
         for var_name, source in raw.items():
             if isinstance(source, str):
@@ -429,14 +485,26 @@ class YAMLParser:
                     )
                 )
             elif isinstance(source, dict):
-                items.append(
-                    ExtractItem(
-                        var_name=var_name,
-                        source=source.get("source", source.get("path", "")),
-                        source_type=source.get("type", "jsonpath"),
-                        default=source.get("default"),
+                # 支持 pipeline 管道提取
+                if "pipeline" in source:
+                    items.append(
+                        ExtractItem(
+                            var_name=var_name,
+                            source="pipeline",
+                            source_type="pipeline",
+                            default=source.get("default"),
+                            pipeline=source["pipeline"],
+                        )
                     )
-                )
+                else:
+                    items.append(
+                        ExtractItem(
+                            var_name=var_name,
+                            source=source.get("source", source.get("path", "")),
+                            source_type=source.get("type", "jsonpath"),
+                            default=source.get("default"),
+                        )
+                    )
         return items
 
     def _parse_db_asserts(self, raw: list[dict[str, Any]]) -> list[DBAssertItem]:

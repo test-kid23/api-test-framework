@@ -7,6 +7,9 @@
 - _safe_serialize 安全序列化
 - ContextSnapshotManager.capture_on_failure
 - ContextSnapshotManager.get_snapshot
+- ContextSnapshotManager.cache_step_snapshot (Redis, T5-12)
+- ContextSnapshotManager.get_cached_snapshot (Redis, T5-12)
+- Redis 不可用时降级（不阻塞执行）
 """
 
 from __future__ import annotations
@@ -230,3 +233,277 @@ class TestContextSnapshotManager:
 
         snapshot = await manager.get_snapshot(uuid.uuid4())
         assert snapshot is None
+
+
+# ═══════════════════════════════════════════════════════════
+# T5-12: Redis 缓存测试
+# ═══════════════════════════════════════════════════════════
+
+
+class MockRedisForSnapshot:
+    """模拟 Redis 客户端（用于快照缓存测试）."""
+
+    def __init__(self, available: bool = True) -> None:
+        self._store: dict[str, str] = {}
+        self._available = available
+        self.ping_called = False
+
+    async def ping(self) -> bool:
+        self.ping_called = True
+        if not self._available:
+            raise ConnectionError("Redis connection failed")
+        return True
+
+    async def set(self, key: str, value: str, ex: int = 0) -> None:
+        self._store[key] = value
+
+    async def get(self, key: str) -> str | None:
+        return self._store.get(key)
+
+
+class TestContextSnapshotRedisCache:
+    """T5-12: Redis 快照缓存测试."""
+
+    @pytest.fixture
+    def mock_repo(self) -> MagicMock:
+        """创建 mock ContextSnapshotRepository."""
+        repo = MagicMock()
+        repo._session = MagicMock()
+        repo._session.add = MagicMock()
+        repo._session.flush = AsyncMock()
+        repo.get_by_execution = AsyncMock()
+        return repo
+
+    @pytest.fixture
+    def redis_available(self) -> MockRedisForSnapshot:
+        """Redis 可用的 mock."""
+        return MockRedisForSnapshot(available=True)
+
+    @pytest.fixture
+    def redis_unavailable(self) -> MockRedisForSnapshot:
+        """Redis 不可用的 mock."""
+        return MockRedisForSnapshot(available=False)
+
+    @pytest.mark.asyncio
+    async def test_cache_step_snapshot_stores_to_redis(
+        self,
+        mock_repo: MagicMock,
+        redis_available: MockRedisForSnapshot,
+    ) -> None:
+        """cache_step_snapshot 将数据写入 Redis."""
+        manager = ContextSnapshotManager(
+            repo=mock_repo,
+            redis_client=redis_available,  # type: ignore[arg-type]
+        )
+
+        await manager.cache_step_snapshot(
+            execution_id="exec-redis-1",
+            step_index=3,
+            run_vars={"env": "prod", "token": "secret123"},
+            case_vars={"user": "admin", "password": "pw"},
+            step_vars={"result": "ok"},
+        )
+
+        # 验证 Redis 中有数据
+        key = "autotest:snapshot:exec-redis-1"
+        assert key in redis_available._store
+
+        import json
+        data = json.loads(redis_available._store[key])
+        assert data["execution_id"] == "exec-redis-1"
+        assert data["step_index"] == 3
+        # 验证脱敏
+        assert data["run_vars"]["token"] == "***REDACTED***"
+        assert data["run_vars"]["env"] == "prod"
+        assert data["case_vars"]["password"] == "***REDACTED***"
+        assert data["case_vars"]["user"] == "admin"
+
+    @pytest.mark.asyncio
+    async def test_get_cached_snapshot_returns_snapshot(
+        self,
+        mock_repo: MagicMock,
+        redis_available: MockRedisForSnapshot,
+    ) -> None:
+        """get_cached_snapshot 从 Redis 读取快照."""
+        manager = ContextSnapshotManager(
+            repo=mock_repo,
+            redis_client=redis_available,  # type: ignore[arg-type]
+        )
+
+        # 先缓存
+        await manager.cache_step_snapshot(
+            execution_id="exec-redis-2",
+            step_index=5,
+            run_vars={"env": "dev"},
+            case_vars={"case": "test"},
+            step_vars={"step": "data"},
+        )
+
+        # 读取缓存
+        snapshot = await manager.get_cached_snapshot("exec-redis-2")
+        assert snapshot is not None
+        assert snapshot.execution_id == "exec-redis-2"
+        assert snapshot.step_index == 5
+        assert snapshot.run_vars.get("env") == "dev"
+
+    @pytest.mark.asyncio
+    async def test_get_cached_snapshot_returns_none_on_miss(
+        self,
+        mock_repo: MagicMock,
+        redis_available: MockRedisForSnapshot,
+    ) -> None:
+        """缓存未命中时返回 None."""
+        manager = ContextSnapshotManager(
+            repo=mock_repo,
+            redis_client=redis_available,  # type: ignore[arg-type]
+        )
+
+        snapshot = await manager.get_cached_snapshot("nonexistent")
+        assert snapshot is None
+
+    @pytest.mark.asyncio
+    async def test_cache_step_snapshot_degraded_when_redis_unavailable(
+        self,
+        mock_repo: MagicMock,
+        redis_unavailable: MockRedisForSnapshot,
+    ) -> None:
+        """Redis 不可用时 cache_step_snapshot 静默降级（不抛异常）."""
+        manager = ContextSnapshotManager(
+            repo=mock_repo,
+            redis_client=redis_unavailable,  # type: ignore[arg-type]
+        )
+
+        # 不应抛出异常
+        await manager.cache_step_snapshot(
+            execution_id="exec-degraded",
+            step_index=1,
+            run_vars={"key": "value"},
+            case_vars={},
+            step_vars={},
+        )
+
+        # Redis 存储应为空
+        assert "autotest:snapshot:exec-degraded" not in redis_unavailable._store
+
+    @pytest.mark.asyncio
+    async def test_get_cached_snapshot_degraded_when_redis_unavailable(
+        self,
+        mock_repo: MagicMock,
+        redis_unavailable: MockRedisForSnapshot,
+    ) -> None:
+        """Redis 不可用时 get_cached_snapshot 返回 None."""
+        manager = ContextSnapshotManager(
+            repo=mock_repo,
+            redis_client=redis_unavailable,  # type: ignore[arg-type]
+        )
+
+        snapshot = await manager.get_cached_snapshot("any-exec")
+        assert snapshot is None
+
+    @pytest.mark.asyncio
+    async def test_no_redis_client_skips_cache(
+        self,
+        mock_repo: MagicMock,
+    ) -> None:
+        """未配置 Redis 时跳过缓存操作."""
+        manager = ContextSnapshotManager(repo=mock_repo)
+
+        # 不应抛出异常
+        await manager.cache_step_snapshot(
+            execution_id="exec-no-redis",
+            step_index=1,
+            run_vars={},
+            case_vars={},
+            step_vars={},
+        )
+
+        snapshot = await manager.get_cached_snapshot("exec-no-redis")
+        assert snapshot is None
+
+    @pytest.mark.asyncio
+    async def test_get_snapshot_falls_back_to_db_on_cache_miss(
+        self,
+        mock_repo: MagicMock,
+        redis_available: MockRedisForSnapshot,
+    ) -> None:
+        """get_snapshot 在 Redis 未命中时回退 DB."""
+        manager = ContextSnapshotManager(
+            repo=mock_repo,
+            redis_client=redis_available,  # type: ignore[arg-type]
+        )
+
+        # DB 有数据
+        mock_model = MagicMock()
+        mock_model.execution_id = uuid.uuid4()
+        mock_model.step_index = 1
+        mock_model.run_vars = {"a": 1}
+        mock_model.case_vars = {}
+        mock_model.step_vars = {}
+        mock_model.error_message = "error"
+        mock_model.traceback = "tb"
+        mock_repo.get_by_execution.return_value = mock_model
+
+        exec_id = uuid.uuid4()
+        snapshot = await manager.get_snapshot(exec_id)
+
+        # 应从 DB 获取
+        assert snapshot is not None
+        assert snapshot.step_index == 1
+        mock_repo.get_by_execution.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_redis_availability_is_cached(
+        self,
+        mock_repo: MagicMock,
+        redis_available: MockRedisForSnapshot,
+    ) -> None:
+        """Redis 可用性检测结果被缓存（不重复 ping）."""
+        manager = ContextSnapshotManager(
+            repo=mock_repo,
+            redis_client=redis_available,  # type: ignore[arg-type]
+        )
+
+        # 第一次调用 — ping
+        await manager.cache_step_snapshot(
+            execution_id="exec-1",
+            step_index=1,
+            run_vars={},
+            case_vars={},
+            step_vars={},
+        )
+        assert redis_available.ping_called is True
+
+        # 重置 ping 调用计数
+        redis_available.ping_called = False
+
+        # 第二次调用 — 不 ping（缓存了可用性结果）
+        await manager.cache_step_snapshot(
+            execution_id="exec-2",
+            step_index=1,
+            run_vars={},
+            case_vars={},
+            step_vars={},
+        )
+        # 可用性被缓存，不会再次 ping
+        assert redis_available.ping_called is False
+
+    @pytest.mark.asyncio
+    async def test_cache_uses_correct_ttl(
+        self,
+        mock_repo: MagicMock,
+    ) -> None:
+        """验证 REDIS_CACHE_TTL 默认值为 3600."""
+        assert ContextSnapshotManager.REDIS_CACHE_TTL == 3600
+
+    @pytest.mark.asyncio
+    async def test_cache_key_prefix(
+        self,
+        mock_repo: MagicMock,
+        redis_available: MockRedisForSnapshot,
+    ) -> None:
+        """验证缓存键前缀."""
+        manager = ContextSnapshotManager(
+            repo=mock_repo,
+            redis_client=redis_available,  # type: ignore[arg-type]
+        )
+        assert manager._REDIS_KEY_PREFIX == "autotest:snapshot:"
