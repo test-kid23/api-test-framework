@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
 import { changePassword } from "@/api/auth";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -21,6 +22,7 @@ export function ChangePasswordDialog({
   open,
   onOpenChange,
 }: ChangePasswordDialogProps) {
+  const { t } = useTranslation();
   const [oldPassword, setOldPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [confirmNewPassword, setConfirmNewPassword] = useState("");
@@ -47,19 +49,19 @@ export function ChangePasswordDialog({
     setSuccess("");
 
     if (!oldPassword) {
-      setError("请输入当前密码");
+      setError(t("changePassword.enterCurrent"));
       return;
     }
     if (!newPassword) {
-      setError("请输入新密码");
+      setError(t("changePassword.enterNew"));
       return;
     }
     if (newPassword.length < 6) {
-      setError("新密码至少需要 6 个字符");
+      setError(t("changePassword.minLength"));
       return;
     }
     if (newPassword !== confirmNewPassword) {
-      setError("两次输入的新密码不一致");
+      setError(t("changePassword.mismatch"));
       return;
     }
 
@@ -69,7 +71,7 @@ export function ChangePasswordDialog({
         old_password: oldPassword,
         new_password: newPassword,
       });
-      setSuccess("密码修改成功！");
+      setSuccess(t("changePassword.success"));
       setTimeout(() => {
         handleOpenChange(false);
       }, 1500);
@@ -80,7 +82,7 @@ export function ChangePasswordDialog({
       const msg =
         typeof detail === "string"
           ? detail
-          : detail?.error || detail?.detail || "修改密码失败，请重试";
+          : detail?.error || detail?.detail || t("changePassword.failed");
       setError(msg);
     } finally {
       setLoading(false);
@@ -91,9 +93,9 @@ export function ChangePasswordDialog({
     <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
-          <DialogTitle>修改密码</DialogTitle>
+          <DialogTitle>{t("changePassword.title")}</DialogTitle>
           <DialogDescription>
-            请输入当前密码和新密码。新密码至少 6 个字符。
+            {t("changePassword.description")}
           </DialogDescription>
         </DialogHeader>
 
@@ -114,7 +116,7 @@ export function ChangePasswordDialog({
 
           <div className="space-y-2">
             <label htmlFor="old-password" className="text-sm font-medium">
-              当前密码
+              {t("changePassword.oldPassword")}
             </label>
             <Input
               id="old-password"
@@ -129,7 +131,7 @@ export function ChangePasswordDialog({
 
           <div className="space-y-2">
             <label htmlFor="new-password" className="text-sm font-medium">
-              新密码
+              {t("changePassword.newPassword")}
             </label>
             <Input
               id="new-password"
@@ -143,7 +145,7 @@ export function ChangePasswordDialog({
 
           <div className="space-y-2">
             <label htmlFor="confirm-new-password" className="text-sm font-medium">
-              确认新密码
+              {t("changePassword.confirmPassword")}
             </label>
             <Input
               id="confirm-new-password"
@@ -162,16 +164,16 @@ export function ChangePasswordDialog({
               onClick={() => handleOpenChange(false)}
               disabled={loading}
             >
-              取消
+              {t("common.cancel")}
             </Button>
             <Button type="submit" disabled={loading}>
               {loading ? (
                 <>
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  修改中...
+                  {t("changePassword.saving")}
                 </>
               ) : (
-                "确认修改"
+                t("changePassword.confirm")
               )}
             </Button>
           </DialogFooter>

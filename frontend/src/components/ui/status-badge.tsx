@@ -1,4 +1,5 @@
 import { cva, type VariantProps } from "class-variance-authority";
+import { useTranslation } from "react-i18next";
 import { cn } from "@/lib/utils";
 import { Loader2 } from "lucide-react";
 
@@ -34,23 +35,6 @@ const statusBadgeVariants = cva(
   }
 );
 
-const statusLabels: Record<string, string> = {
-  passed: "通过",
-  failed: "失败",
-  running: "运行中",
-  pending: "等待中",
-  cancelled: "已取消",
-  error: "错误",
-  P0: "P0",
-  P1: "P1",
-  P2: "P2",
-  P3: "P3",
-  success: "成功",
-  warning: "警告",
-  info: "信息",
-  destructive: "危险",
-};
-
 export interface StatusBadgeProps
   extends React.HTMLAttributes<HTMLSpanElement>,
     VariantProps<typeof statusBadgeVariants> {
@@ -64,7 +48,20 @@ export function StatusBadge({
   children,
   ...props
 }: StatusBadgeProps) {
-  const label = children ?? (variant ? statusLabels[variant] ?? variant : "");
+  const { t } = useTranslation();
+
+  const getLabel = () => {
+    if (children) return children;
+    if (!variant) return "";
+    // 优先级标签不需要翻译
+    if (["P0", "P1", "P2", "P3"].includes(variant)) return variant;
+    // 通过 i18n 获取状态标签
+    const key = `status:${variant}`;
+    const translated = t(key);
+    return translated !== key ? translated : variant;
+  };
+
+  const label = getLabel();
 
   return (
     <span

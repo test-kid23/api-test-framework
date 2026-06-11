@@ -36,9 +36,9 @@ const quickLinks = [
 ];
 
 const roleLabels: Record<string, string> = {
-  admin: "管理员",
-  editor: "编辑者",
-  viewer: "观察者",
+  admin: "role:admin",
+  editor: "role:editor",
+  viewer: "role:viewer",
 };
 
 export function Header() {
@@ -86,7 +86,8 @@ export function Header() {
   };
 
   const displayName = user?.username || "User";
-  const roleLabel = roleLabels[user?.role || ""] || user?.role || "";
+  const roleKey = roleLabels[user?.role || ""] || "";
+  const roleLabel = roleKey ? t(roleKey) : (user?.role || "");
   const initial = displayName.charAt(0).toUpperCase();
 
   return (
@@ -185,7 +186,7 @@ export function Header() {
               {isAdmin && (
                 <DropdownMenuItem onClick={() => navigate("/environments")}>
                   <Settings className="mr-2 h-4 w-4" />
-                  {t("sidebar:systemSettings")}
+                  {t("sidebar.systemSettings")}
                 </DropdownMenuItem>
               )}
               <DropdownMenuSeparator />
@@ -200,10 +201,10 @@ export function Header() {
 
       {/* ⌘K Command Dialog */}
       <CommandDialog open={cmdOpen} onOpenChange={setCmdOpen}>
-        <CommandInput placeholder={t("sidebar:searchPages")} />
+        <CommandInput placeholder={t("sidebar.searchPages")} />
         <CommandList>
           <CommandEmpty>{t("common:noData")}</CommandEmpty>
-          <CommandGroup heading={t("sidebar:systemSettings")}>
+          <CommandGroup heading={t("sidebar.systemSettings")}>
             {quickLinks.map((link) => (
               <CommandItem
                 key={link.to}

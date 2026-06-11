@@ -78,8 +78,8 @@ async def init_app(
             await session.flush()
             _log.info("init_default_project_created", project_name=default_project_name)
 
-        # 4. 确保默认管理员存在（并修复 bcrypt 版本兼容性问题）
-        from api.auth import hash_password, verify_password
+        # 4. 确保默认管理员存在
+        from api.auth import hash_password
 
         stmt = select(UserModel).where(UserModel.username == default_admin_user)
         result = await session.execute(stmt)
@@ -100,14 +100,10 @@ async def init_app(
                 password_hint="请登录后立即修改默认密码",
             )
         else:
-            # 修复：bcrypt 版本升级后旧哈希可能无法验证
-            try:
-                if not verify_password(default_admin_pass, admin.password_hash):
-                    _log.warning("admin_password_rehash", reason="password verification failed (likely bcrypt version mismatch)")
-                    admin.password_hash = hash_password(default_admin_pass)
-                    _log.info("admin_password_reset_complete")
-            except Exception as e:
-                _log.warning("admin_password_rehash", reason=str(e))
+            # 仅在哈希前缀不匹配时重新哈希（bcrypt 版本/前缀变更）
+            # 避免每次启动都执行昂贵的 verify_password 操作
+            if not admin.password_hash.startswith("$2b$") and not admin.password_hash.startswith("$2a$"):
+                _log.warning("admin_password_rehash", reason="hash prefix mismatch, regenerating")
                 admin.password_hash = hash_password(default_admin_pass)
 
             # 5. 绑定管理员到默认项目

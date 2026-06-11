@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
+import { useTranslation } from "react-i18next";
 import { useExecutions, useTriggerExecution } from "@/hooks/useExecutions";
 import { useSuites } from "@/hooks/useSuites";
 import { useEnvironments } from "@/hooks/useEnvironments";
@@ -24,14 +25,11 @@ import { toast } from "sonner";
 import { Play, X, ExternalLink, Loader2, RefreshCw } from "lucide-react";
 import { format } from "date-fns";
 import { zhCN } from "date-fns/locale";
-import type { Execution, ExecutionTrigger } from "@/types";
+import type { Execution } from "@/types";
 import { usePermission } from "@/hooks/usePermission";
 
-const triggerLabels: Record<ExecutionTrigger, string> = {
-  manual: "手动", scheduled: "定时", webhook: "Webhook", api: "API",
-};
-
 export function ExecutionsPage() {
+  const { t } = useTranslation();
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const { canEdit } = usePermission();
@@ -57,7 +55,7 @@ export function ExecutionsPage() {
 
   const handleTrigger = async () => {
     if (!triggerEnv) {
-      toast.error("请选择目标环境");
+      toast.error(t("executions.selectEnvToast"));
       return;
     }
     try {
@@ -67,10 +65,10 @@ export function ExecutionsPage() {
         env: triggerEnv,
         trigger: "manual",
       });
-      toast.success("执行已触发");
+      toast.success(t("executions.execTriggered"));
       setTriggerOpen(false);
     } catch {
-      toast.error("触发执行失败");
+      toast.error(t("executions.triggerFailed"));
     }
   };
 
@@ -88,18 +86,18 @@ export function ExecutionsPage() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <h1 className="text-2xl font-bold">执行历史</h1>
+          <h1 className="text-2xl font-bold">{t("executions.title")}</h1>
           {isFetching && !isLoading && (
             <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
               <RefreshCw className="h-3 w-3 animate-spin" />
-              自动刷新中
+              {t("executions.autoRefresh")}
             </span>
           )}
         </div>
         {canEdit && (
         <Button onClick={() => setTriggerOpen(true)} className="gap-2">
           <Play className="h-4 w-4" />
-          触发新执行
+          {t("executions.triggerNew")}
         </Button>
         )}
       </div>
@@ -107,8 +105,8 @@ export function ExecutionsPage() {
       {/* Status Tabs */}
       <div className="flex gap-1 bg-muted rounded-lg p-1 w-fit">
         {["all", "PASSED", "FAILED", "RUNNING", "PENDING"].map((s) => {
-          const labelMap: Record<string, string> = {
-            all: "全部", PASSED: "通过", FAILED: "失败", RUNNING: "运行中", PENDING: "等待中",
+          const labelKey: Record<string, string> = {
+            all: "executions:all", PASSED: "executions:passed", FAILED: "executions:failed", RUNNING: "executions:running", PENDING: "executions:pending",
           };
           return (
             <Button
@@ -125,7 +123,7 @@ export function ExecutionsPage() {
                 })
               }
             >
-              {labelMap[s]}
+              {t(labelKey[s])}
             </Button>
           );
         })}
@@ -163,20 +161,20 @@ export function ExecutionsPage() {
             </div>
           ) : isError ? (
             <div className="p-12 text-center text-destructive">
-              加载失败，请检查后端服务。
+              {t("executions.loadFailed")}
             </div>
           ) : data && data.items.length > 0 ? (
             <>
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>执行名称</TableHead>
-                    <TableHead className="w-[90px]">状态</TableHead>
-                    <TableHead className="w-[110px]">通过/失败</TableHead>
-                    <TableHead className="w-[70px]">触发</TableHead>
-                    <TableHead className="w-[130px]">开始时间</TableHead>
-                    <TableHead className="w-[130px]">结束时间</TableHead>
-                    <TableHead className="w-[80px]">操作</TableHead>
+                    <TableHead>{t("executions.execName")}</TableHead>
+                    <TableHead className="w-[90px]">{t("executions.statusLabel")}</TableHead>
+                    <TableHead className="w-[110px]">{t("executions.passFail")}</TableHead>
+                    <TableHead className="w-[70px]">{t("executions.trigger")}</TableHead>
+                    <TableHead className="w-[130px]">{t("executions.startTimeCol")}</TableHead>
+                    <TableHead className="w-[130px]">{t("executions.endTimeCol")}</TableHead>
+                    <TableHead className="w-[80px]">{t("executions.actions")}</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -198,14 +196,18 @@ export function ExecutionsPage() {
                       >
                         <TableCell>
                           <div>
-                            <p className="font-medium">{ex.name || "未命名执行"}</p>
+                            <p className="font-medium">{ex.name || t("executions.unnamed")}</p>
                             {isRunning && (
                               <Progress value={progress} className="h-1.5 mt-1.5" />
                             )}
                           </div>
                         </TableCell>
                         <TableCell>
-                          <StatusBadge variant={ex.status.toLowerCase() as "passed" | "failed" | "running" | "pending" | "cancelled" | "error"} />
+                          <StatusBadge variant={(
+                            ["passed","failed","running","pending","cancelled","error"].includes(ex.status.toLowerCase())
+                              ? ex.status.toLowerCase()
+                              : "error"
+                          ) as "passed" | "failed" | "running" | "pending" | "cancelled" | "error"} />
                         </TableCell>
                         <TableCell className="text-sm">
                           {summary ? (
@@ -218,7 +220,7 @@ export function ExecutionsPage() {
                                 {summary.failed_cases}
                               </span>
                               <span className="text-muted-foreground text-xs ml-1">
-                                (共{summary.total_cases})
+                                ({t("executions.totalCount", { count: summary.total_cases })})
                               </span>
                             </div>
                           ) : (
@@ -226,7 +228,7 @@ export function ExecutionsPage() {
                           )}
                         </TableCell>
                         <TableCell className="text-sm text-muted-foreground">
-                          {triggerLabels[ex.trigger] || ex.trigger}
+                          {t(`executions:${ex.trigger}` as any) || ex.trigger}
                         </TableCell>
                         <TableCell className="text-sm text-muted-foreground font-mono">
                           {formatDate(ex.started_at)}
@@ -269,7 +271,7 @@ export function ExecutionsPage() {
               {/* Pagination */}
               <div className="flex items-center justify-between px-4 py-3 border-t">
                 <span className="text-sm text-muted-foreground">
-                  共 {data.pagination.total} 条
+                  {t("executions.totalCases", { count: data.pagination.total })}
                 </span>
                 <div className="flex gap-2">
                   <Button
@@ -284,7 +286,7 @@ export function ExecutionsPage() {
                       })
                     }
                   >
-                    上一页
+                    {t("executions.prevPage")}
                   </Button>
                   <Button
                     variant="outline"
@@ -298,7 +300,7 @@ export function ExecutionsPage() {
                       })
                     }
                   >
-                    下一页
+                    {t("executions.nextPage")}
                   </Button>
                 </div>
               </div>
@@ -307,9 +309,9 @@ export function ExecutionsPage() {
             <div className="p-12">
               <EmptyState
                 icon={Play}
-                title="暂无执行记录"
-                description="选择套件和目标环境，触发一次新的测试执行"
-                action={{ label: "触发新执行", onClick: () => setTriggerOpen(true) }}
+                title={t("executions.noExecutions")}
+                description={t("executions.noExecDesc")}
+                action={{ label: t("executions.triggerNew"), onClick: () => setTriggerOpen(true) }}
               />
             </div>
           )}
@@ -320,17 +322,17 @@ export function ExecutionsPage() {
       <Dialog open={triggerOpen} onOpenChange={setTriggerOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>触发新执行</DialogTitle>
+            <DialogTitle>{t("executions.triggerDialogTitle")}</DialogTitle>
             <DialogDescription>
-              选择套件和目标环境，触发一次新的测试执行。
+              {t("executions.triggerDialogDesc")}
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-4">
             <div className="space-y-2">
-              <Label>目标环境 *</Label>
+              <Label>{t("executions.targetEnv")}</Label>
               <Select value={triggerEnv} onValueChange={setTriggerEnv}>
                 <SelectTrigger>
-                  <SelectValue placeholder="选择环境..." />
+                  <SelectValue placeholder={t("executions.selectEnv")} />
                 </SelectTrigger>
                 <SelectContent>
                   {envs.map((env: { id: string; name: string }) => (
@@ -342,13 +344,13 @@ export function ExecutionsPage() {
               </Select>
             </div>
             <div className="space-y-2">
-              <Label>关联套件（可选）</Label>
+              <Label>{t("executions.linkSuite")}</Label>
               <Select value={triggerSuiteId} onValueChange={setTriggerSuiteId}>
                 <SelectTrigger>
-                  <SelectValue placeholder="选择套件或留空..." />
+                  <SelectValue placeholder={t("executions.selectSuiteOrEmpty")} />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">不使用套件</SelectItem>
+                  <SelectItem value="">{t("executions.noSuite")}</SelectItem>
                   {suites.map((s: { id: string; name: string }) => (
                     <SelectItem key={s.id} value={s.id}>
                       {s.name}
@@ -360,13 +362,13 @@ export function ExecutionsPage() {
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setTriggerOpen(false)}>
-              取消
+              {t("common.cancel")}
             </Button>
             <Button onClick={handleTrigger} disabled={triggerMutation.isPending}>
               {triggerMutation.isPending && (
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
               )}
-              开始执行
+              {t("executions.startExecution")}
             </Button>
           </DialogFooter>
         </DialogContent>

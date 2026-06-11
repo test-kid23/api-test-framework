@@ -59,7 +59,7 @@ export function EnvironmentsPage() {
     setFormData({
       name: env.name,
       description: env.description || "",
-      base_url: env.base_url,
+      base_url: env.base_url || "",
       ws_url: env.ws_url || "",
     });
     const vars = env.variables
@@ -241,7 +241,7 @@ export function EnvironmentsPage() {
                       {varCount(env)} 个变量
                     </Badge>
                     <span className="text-xs text-muted-foreground">
-                      创建于 {formatDate(env.created_at)}
+                      创建于 {formatDate(env.created_at || "")}
                     </span>
                   </div>
                 </div>

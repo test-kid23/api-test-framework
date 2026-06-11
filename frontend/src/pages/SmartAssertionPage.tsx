@@ -264,7 +264,7 @@ export function SmartAssertionPage() {
         <div className="grid grid-cols-4 gap-4">
           <Card>
             <CardContent className="pt-6">
-              <div className="text-2xl font-bold">{schema.field_count || Object.keys(schema.fields || {}).length}</div>
+              <div className="text-2xl font-bold">{Object.keys(schema.fields || {}).length}</div>
               <div className="text-xs text-muted-foreground">字段总数</div>
             </CardContent>
           </Card>

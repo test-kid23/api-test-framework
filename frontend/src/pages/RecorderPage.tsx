@@ -67,7 +67,7 @@ export function RecorderPage() {
 
   const handleStop = async () => {
     try {
-      await stopRecording.mutateAsync();
+      await stopRecording.mutateAsync(undefined);
       toast.success("录制已停止并保存");
     } catch {
       toast.error("停止录制失败");

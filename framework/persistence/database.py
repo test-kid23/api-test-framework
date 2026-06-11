@@ -117,7 +117,53 @@ def create_async_engine(
         engine_kwargs["max_overflow"] = db_config.get("max_overflow", 10)
 
     engine = _create_async_engine(url, **engine_kwargs)
+
+    # SQLite: 启用 WAL 模式以支持并发读写（读不阻塞写，写不阻塞读）
+    if "aiosqlite" in url:
+        _enable_sqlite_wal(engine)
+
     return engine
+
+
+def _enable_sqlite_wal(engine: AsyncEngine) -> None:
+    """为 SQLite 启用 WAL 模式，提升并发性能。
+
+    WAL (Write-Ahead Logging) 模式下：
+    - 读操作不会阻塞写操作
+    - 写操作不会阻塞读操作
+    - 并发性能显著提升
+
+    Args:
+        engine: SQLAlchemy AsyncEngine（SQLite 驱动）。
+    """
+    import asyncio
+
+    async def _set_wal() -> None:
+        async with engine.connect() as conn:
+            await conn.exec_driver_sql("PRAGMA journal_mode=WAL")
+            await conn.exec_driver_sql("PRAGMA synchronous=NORMAL")
+            await conn.commit()
+        logger.info("sqlite_wal_enabled")
+
+    try:
+        # 在事件循环中执行（如果当前没有运行中的事件循环，用 asyncio.run）
+        loop = asyncio.get_event_loop()
+        if loop.is_running():
+            # 在已有事件循环中，创建新 task 执行
+            import threading
+
+            def _run_in_thread() -> None:
+                new_loop = asyncio.new_event_loop()
+                new_loop.run_until_complete(_set_wal())
+                new_loop.close()
+
+            t = threading.Thread(target=_run_in_thread, daemon=True)
+            t.start()
+            t.join(timeout=5)
+        else:
+            loop.run_until_complete(_set_wal())
+    except RuntimeError:
+        asyncio.run(_set_wal())
 
 
 def create_async_session_factory(

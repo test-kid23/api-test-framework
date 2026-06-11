@@ -88,13 +88,57 @@ def _execution_status_from_summary(summary: dict[str, int]) -> ExecutionStatus:
     return ExecutionStatus.FAILED
 
 
+def _safe_parse_status(raw: str) -> ExecutionStatus:
+    """安全解析执行状态枚举，对数据库中的不规范值做容错。
+
+    Args:
+        raw: 数据库中的原始状态字符串。
+
+    Returns:
+        对应的 ExecutionStatus 枚举值；无法匹配时返回 ERROR 并记录警告。
+    """
+    # 大小写不敏感匹配：兼容 DB 默认值 "pending" 与枚举 "PENDING" 的差异
+    normalized = raw.upper() if raw else ""
+    try:
+        return ExecutionStatus(normalized)
+    except ValueError:
+        _log.warning(
+            "unknown_execution_status",
+            raw_value=raw,
+            fallback="ERROR",
+        )
+        return ExecutionStatus.ERROR
+
+
+def _safe_parse_trigger(raw: str) -> ExecutionTrigger:
+    """安全解析触发方式枚举，对数据库中的不规范值做容错。
+
+    Args:
+        raw: 数据库中的原始 trigger 字符串。
+
+    Returns:
+        对应的 ExecutionTrigger 枚举值；无法匹配时返回 API 并记录警告。
+    """
+    # 大小写不敏感匹配：兼容 DB 默认值 "manual" 与枚举 "MANUAL" 的差异
+    normalized = raw.lower() if raw else ""
+    try:
+        return ExecutionTrigger(normalized)
+    except ValueError:
+        _log.warning(
+            "unknown_execution_trigger",
+            raw_value=raw,
+            fallback="api",
+        )
+        return ExecutionTrigger.API
+
+
 def _execution_to_response(exec_model: ExecutionModel) -> ExecutionResponse:
     """将 ExecutionModel 转换为 API 响应（不含 results/summary 详情）。"""
     return ExecutionResponse(
         id=str(exec_model.id),
         name=f"exec-{str(exec_model.id)[:12]}",
-        status=ExecutionStatus(exec_model.status),
-        trigger=ExecutionTrigger(exec_model.trigger) if exec_model.trigger in ["manual", "api", "scheduled", "webhook"] else ExecutionTrigger.API,
+        status=_safe_parse_status(exec_model.status),
+        trigger=_safe_parse_trigger(exec_model.trigger),
         env=exec_model.env or "dev",
         mode="distributed" if exec_model.celery_task_id else "local",
         celery_task_id=exec_model.celery_task_id,
@@ -548,8 +592,8 @@ async def get_execution(
     response = ExecutionResponse(
         id=str(exec_model.id),
         name=f"exec-{str(exec_model.id)[:12]}",
-        status=ExecutionStatus(exec_model.status),
-        trigger=ExecutionTrigger(exec_model.trigger) if exec_model.trigger in ["manual", "api", "scheduled", "webhook"] else ExecutionTrigger.API,
+        status=_safe_parse_status(exec_model.status),
+        trigger=_safe_parse_trigger(exec_model.trigger),
         env=exec_model.env or "dev",
         mode="distributed" if exec_model.celery_task_id else "local",
         celery_task_id=exec_model.celery_task_id,

@@ -89,7 +89,8 @@ async def login(
         )
 
     user_repo = UserRepository(session)
-    user = await user_repo.find_by_username_with_projects(body.username)
+    # 登录仅需验证用户名+密码，不需要加载关联项目数据
+    user = await user_repo.find_by_username(body.username)
 
     if user is None or not user.is_active:
         record_login_failure(body.username)

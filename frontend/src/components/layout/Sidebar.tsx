@@ -34,39 +34,39 @@ interface NavGroup {
 
 const navGroups: NavGroup[] = [
   {
-    labelKey: "sidebar:testManagement",
+    labelKey: "sidebar.testManagement",
     items: [
-      { to: "/cases", labelKey: "sidebar:caseManagement", icon: FileText },
-      { to: "/suites", labelKey: "sidebar:suiteManagement", icon: Package },
-      { to: "/executions", labelKey: "sidebar:executionHistory", icon: Play },
+      { to: "/cases", labelKey: "sidebar.caseManagement", icon: FileText },
+      { to: "/suites", labelKey: "sidebar.suiteManagement", icon: Package },
+      { to: "/executions", labelKey: "sidebar.executionHistory", icon: Play },
     ],
   },
   {
-    labelKey: "sidebar:dataAnalysis",
+    labelKey: "sidebar.dataAnalysis",
     items: [
-      { to: "/dashboard", labelKey: "sidebar:dashboard", icon: BarChart3 },
-      { to: "/coverage", labelKey: "sidebar:coverageAnalysis", icon: Target },
+      { to: "/dashboard", labelKey: "sidebar.dashboard", icon: BarChart3 },
+      { to: "/coverage", labelKey: "sidebar.coverageAnalysis", icon: Target },
     ],
   },
   {
-    labelKey: "sidebar:testTools",
+    labelKey: "sidebar.testTools",
     items: [
-      { to: "/mocks", labelKey: "sidebar:mockRules", icon: Server },
-      { to: "/recorder", labelKey: "sidebar:trafficRecorder", icon: Radio },
-      { to: "/smart-assertions", labelKey: "sidebar:smartAssertions", icon: Sparkles },
+      { to: "/mocks", labelKey: "sidebar.mockRules", icon: Server },
+      { to: "/recorder", labelKey: "sidebar.trafficRecorder", icon: Radio },
+      { to: "/smart-assertions", labelKey: "sidebar.smartAssertions", icon: Sparkles },
     ],
   },
   {
-    labelKey: "sidebar:systemSettings",
+    labelKey: "sidebar.systemSettings",
     items: [
-      { to: "/environments", labelKey: "sidebar:environmentManagement", icon: Settings },
-      { to: "/schedules", labelKey: "sidebar:scheduledTasks", icon: Clock },
+      { to: "/environments", labelKey: "sidebar.environmentManagement", icon: Settings },
+      { to: "/schedules", labelKey: "sidebar.scheduledTasks", icon: Clock },
     ],
   },
   {
-    labelKey: "sidebar:permissionManagement",
+    labelKey: "sidebar.permissionManagement",
     items: [
-      { to: "/users", labelKey: "sidebar:userManagement", icon: Users, adminOnly: true },
+      { to: "/users", labelKey: "sidebar.userManagement", icon: Users, adminOnly: true },
     ],
   },
 ];
@@ -185,7 +185,7 @@ export function Sidebar() {
               !sidebarOpen && "rotate-180"
             )}
           />
-          {sidebarOpen && <span className="ml-2 text-xs">{t("sidebar:collapse")}</span>}
+          {sidebarOpen && <span className="ml-2 text-xs">{t("sidebar.collapse")}</span>}
         </Button>
       </div>
     </aside>

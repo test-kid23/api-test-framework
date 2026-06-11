@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { useTranslation } from "react-i18next";
 import { Plus, Pencil, Trash2, Play, Package, Loader2, Search, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -30,6 +31,7 @@ import type { Suite, SuiteCreate } from "@/types";
 import { usePermission } from "@/hooks/usePermission";
 
 export function SuitesPage() {
+  const { t } = useTranslation();
   const navigate = useNavigate();
   const [search, setSearch] = useState("");
   const { canEdit } = usePermission();
@@ -70,7 +72,7 @@ export function SuitesPage() {
 
   async function handleSave() {
     if (!formName.trim()) {
-      toast.error("请输入套件名称");
+      toast.error(t("suites.enterNameToast"));
       return;
     }
     const payload: SuiteCreate = {
@@ -81,14 +83,14 @@ export function SuitesPage() {
     try {
       if (editingSuite) {
         await updateSuite.mutateAsync({ id: editingSuite.id, payload });
-        toast.success("套件已更新");
+        toast.success(t("suites.updated"));
       } else {
         await createSuite.mutateAsync(payload);
-        toast.success("套件已创建");
+        toast.success(t("suites.created"));
       }
       setDialogOpen(false);
     } catch {
-      toast.error("保存失败");
+      toast.error(t("suites.saveFailed"));
     }
   }
 
@@ -96,9 +98,9 @@ export function SuitesPage() {
     if (!deleteTarget) return;
     try {
       await deleteSuite.mutateAsync(deleteTarget.id);
-      toast.success("套件已删除");
+      toast.success(t("suites.deleted"));
     } catch {
-      toast.error("删除失败");
+      toast.error(t("suites.deleteFailed"));
     }
   }
 
@@ -109,10 +111,10 @@ export function SuitesPage() {
         case_ids: [],
         suite_id: suiteId,
       });
-      toast.success(`执行已触发: ${result.name}`);
+      toast.success(t("suites.triggered", { name: result.name }));
       navigate(`/executions/${result.id}`);
     } catch {
-      toast.error("触发执行失败");
+      toast.error(t("suites.triggerFailed"));
     } finally {
       setTriggeringId(null);
     }
@@ -127,10 +129,10 @@ export function SuitesPage() {
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold">套件管理</h1>
+        <h1 className="text-2xl font-bold">{t("suites.title")}</h1>
         {canEdit && (
         <Button onClick={openCreate}>
-          <Plus className="mr-2 h-4 w-4" />新建套件
+          <Plus className="mr-2 h-4 w-4" />{t("suites.create")}
         </Button>
         )}
       </div>
@@ -140,7 +142,7 @@ export function SuitesPage() {
         <div className="relative flex-1 max-w-sm">
           <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
           <Input
-            placeholder="搜索套件..."
+            placeholder={t("suites.searchPlaceholder")}
             className="pl-8"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
@@ -148,7 +150,7 @@ export function SuitesPage() {
         </div>
         {search && (
           <Button variant="ghost" size="sm" onClick={() => setSearch("")}>
-            <X className="h-4 w-4" />清除
+            <X className="h-4 w-4" />{t("suites.clearSearch")}
           </Button>
         )}
       </div>
@@ -181,12 +183,12 @@ export function SuitesPage() {
           <CardContent className="py-0">
             <EmptyState
               icon={Package}
-              title={search ? "未找到匹配的套件" : "暂无套件"}
-              description={search ? "尝试其他搜索词" : "创建测试套件来组织和管理用例"}
+              title={search ? t("suites.noMatch") : t("suites.noSuites")}
+              description={search ? t("suites.tryOtherKeyword") : t("suites.noSuitesDesc")}
               action={
                 search
-                  ? { label: "清除搜索", onClick: () => setSearch("") }
-                  : canEdit ? { label: "新建套件", onClick: openCreate } : undefined
+                  ? { label: t("suites.clearSearch"), onClick: () => setSearch("") }
+                  : canEdit ? { label: t("suites.create"), onClick: openCreate } : undefined
               }
             />
           </CardContent>
@@ -211,7 +213,7 @@ export function SuitesPage() {
                 <div className="flex items-center gap-2">
                   <Badge variant="secondary" className="text-xs">
                     <Package className="mr-1 h-3 w-3" />
-                    {(suite.case_ids?.length ?? 0)} 个用例
+                    {(suite.case_ids?.length ?? 0)} {t("suites.casesUnit")}
                   </Badge>
                   {suite.tags?.map((tag) => (
                     <Badge key={tag} variant="outline" className="text-xs">
@@ -235,7 +237,7 @@ export function SuitesPage() {
                       ) : (
                         <Play className="mr-1 h-3.5 w-3.5" />
                       )}
-                      触发执行
+                      {t("suites.triggerExecution")}
                     </Button>
                     <Button variant="outline" size="sm" onClick={() => openEdit(suite)}>
                       <Pencil className="h-3.5 w-3.5" />
@@ -250,7 +252,7 @@ export function SuitesPage() {
                   </>
                 ) : (
                   <span className="text-sm text-muted-foreground">
-                    {(suite.case_ids?.length ?? 0)} 个用例
+                    {(suite.case_ids?.length ?? 0)} {t("suites.casesUnit")}
                   </span>
                 )}
               </CardFooter>
@@ -263,40 +265,40 @@ export function SuitesPage() {
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
         <DialogContent className="max-w-xl">
           <DialogHeader>
-            <DialogTitle>{editingSuite ? "编辑套件" : "新建套件"}</DialogTitle>
+            <DialogTitle>{editingSuite ? t("suites.editTitle") : t("suites.createTitle")}</DialogTitle>
             <DialogDescription>
-              {editingSuite ? "修改套件信息和关联用例" : "创建一个新的测试套件"}
+              {editingSuite ? t("suites.editDesc") : t("suites.createDesc")}
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
             <div className="space-y-2">
-              <Label htmlFor="suite-name">名称 *</Label>
+              <Label htmlFor="suite-name">{t("suites.nameLabel")}</Label>
               <Input
                 id="suite-name"
                 value={formName}
                 onChange={(e) => setFormName(e.target.value)}
-                placeholder="例如：核心API冒烟测试"
+                placeholder={t("suites.namePlaceholder")}
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="suite-desc">描述</Label>
+              <Label htmlFor="suite-desc">{t("suites.descLabel")}</Label>
               <Textarea
                 id="suite-desc"
                 value={formDesc}
                 onChange={(e) => setFormDesc(e.target.value)}
-                placeholder="套件用途说明（可选）"
+                placeholder={t("suites.descPlaceholder")}
                 rows={3}
               />
             </div>
             <div className="space-y-2">
-              <Label>关联用例</Label>
+              <Label>{t("suites.linkedCases")}</Label>
               <div className="text-xs text-muted-foreground mb-2">
-                已选 {formCaseIds.length} / {allCases.length} 个用例
+                {t("suites.selectedCount", { selected: formCaseIds.length, total: allCases.length })}
               </div>
               <ScrollArea className="h-48 rounded-md border">
                 <div className="p-3 space-y-1">
                   {allCases.length === 0 ? (
-                    <p className="text-sm text-muted-foreground p-2">暂无可用用例</p>
+                    <p className="text-sm text-muted-foreground p-2">{t("suites.noAvailableCases")}</p>
                   ) : (
                     allCases.map((c) => (
                       <label
@@ -320,7 +322,7 @@ export function SuitesPage() {
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setDialogOpen(false)}>
-              取消
+              {t("common.cancel")}
             </Button>
             <Button
               onClick={handleSave}
@@ -329,7 +331,7 @@ export function SuitesPage() {
               {(createSuite.isPending || updateSuite.isPending) && (
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
               )}
-              保存
+              {t("common.save")}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -342,13 +344,13 @@ export function SuitesPage() {
       >
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>确认删除</AlertDialogTitle>
+            <AlertDialogTitle>{t("suites.confirmDeleteTitle")}</AlertDialogTitle>
             <AlertDialogDescription>
-              确定要删除套件「{deleteTarget?.name}」吗？此操作不可撤销。
+              {t("suites.confirmDeleteDesc", { name: deleteTarget?.name ?? "" })}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>取消</AlertDialogCancel>
+            <AlertDialogCancel>{t("common.cancel")}</AlertDialogCancel>
             <AlertDialogAction
               onClick={handleDelete}
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
@@ -356,7 +358,7 @@ export function SuitesPage() {
               {deleteSuite.isPending && (
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
               )}
-              删除
+              {t("suites.deleteBtn")}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

@@ -280,6 +280,13 @@ def create_app() -> FastAPI:
 
     @app.exception_handler(ValueError)
     async def value_error_handler(request: Request, exc: ValueError):
+        _log.warning(
+            "value_error_caught",
+            path=request.url.path,
+            method=request.method,
+            error=str(exc),
+            exc_info=True,
+        )
         return JSONResponse(
             status_code=400,
             content=ErrorResponse(
