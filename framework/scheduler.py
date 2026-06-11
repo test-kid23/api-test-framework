@@ -219,6 +219,7 @@ async def fire_schedule(schedule_id: str) -> None:
     3. 创建 ExecutionModel 记录
     4. 发送 Celery 异步执行任务
     5. 更新调度上次运行时间
+    6. 失败时通过 NotificationService 发送告警
 
     Args:
         schedule_id: 调度 ID（UUID 字符串）。
@@ -229,6 +230,8 @@ async def fire_schedule(schedule_id: str) -> None:
         return
 
     session: AsyncSession | None = None
+    schedule_name = ""
+    env_name = ""
     try:
         session_factory = scheduler._session_factory
         session = session_factory()
@@ -244,6 +247,9 @@ async def fire_schedule(schedule_id: str) -> None:
             )
             return
 
+        schedule_name = schedule_model.name
+        env_name = schedule_model.env_name
+
         # 查询套件下的所有用例 ID
         suite_uuid = schedule_model.suite_id
         suite_result = await session.execute(
@@ -255,6 +261,13 @@ async def fire_schedule(schedule_id: str) -> None:
                 "schedule_suite_not_found",
                 schedule_id=schedule_id,
                 suite_id=str(suite_uuid),
+            )
+            await _send_schedule_failure_alert(
+                schedule_id=schedule_id,
+                schedule_name=schedule_name,
+                env_name=env_name,
+                failure_type="suite_not_found",
+                detail=f"套件 {suite_uuid} 不存在或已被删除",
             )
             return
         suite_name = suite_row[0]
@@ -269,6 +282,13 @@ async def fire_schedule(schedule_id: str) -> None:
                 "schedule_no_cases",
                 schedule_id=schedule_id,
                 suite_id=str(suite_uuid),
+            )
+            await _send_schedule_failure_alert(
+                schedule_id=schedule_id,
+                schedule_name=schedule_name,
+                env_name=env_name,
+                failure_type="no_cases",
+                detail=f"套件 '{suite_name}' 下没有可执行的测试用例",
             )
             return
 
@@ -324,6 +344,14 @@ async def fire_schedule(schedule_id: str) -> None:
             session.add(exec_model)
             await session.commit()
 
+            await _send_schedule_failure_alert(
+                schedule_id=schedule_id,
+                schedule_name=schedule_name,
+                env_name=env_name,
+                failure_type="celery_dispatch",
+                detail=f"Celery 任务分发失败: {e}",
+            )
+
     except Exception as e:
         _log.error(
             "schedule_fire_callback_failed",
@@ -331,9 +359,90 @@ async def fire_schedule(schedule_id: str) -> None:
             error=str(e),
             exc_info=True,
         )
+        await _send_schedule_failure_alert(
+            schedule_id=schedule_id,
+            schedule_name=schedule_name,
+            env_name=env_name,
+            failure_type="callback_failed",
+            detail=f"调度回调异常: {e}",
+        )
     finally:
         if session is not None:
             await session.close()
+
+
+async def _send_schedule_failure_alert(
+    schedule_id: str,
+    schedule_name: str,
+    env_name: str,
+    failure_type: str,
+    detail: str,
+) -> None:
+    """向 NotificationService 发送调度失败告警。
+
+    Args:
+        schedule_id: 调度 ID。
+        schedule_name: 调度名称。
+        env_name: 环境名称。
+        failure_type: 失败类型标识（suite_not_found / no_cases / celery_dispatch / callback_failed）。
+        detail: 失败详情描述。
+    """
+    try:
+        import yaml
+        from pathlib import Path
+
+        from framework.notifications import NotificationService
+
+        # 从 config.yaml 读取 notifications 配置（全局配置，非环境配置）
+        config_path = Path("config") / "config.yaml"
+        if not config_path.exists():
+            _log.debug("alert_skipped_no_config_file", schedule_id=schedule_id)
+            return
+
+        raw_config = yaml.safe_load(config_path.read_text(encoding="utf-8"))
+        notifications_config = raw_config.get("notifications", {})
+
+        if not notifications_config.get("enabled", False):
+            _log.debug("alert_skipped_notifications_disabled", schedule_id=schedule_id)
+            return
+
+        service = NotificationService.from_config(
+            notifications_config, env_name or ""
+        )
+        timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
+
+        type_label = {
+            "suite_not_found": "套件不存在",
+            "no_cases": "无用例可执行",
+            "celery_dispatch": "Celery 分发失败",
+            "callback_failed": "调度回调异常",
+        }.get(failure_type, failure_type)
+
+        message = (
+            f"> 调度: **{schedule_name}** ({schedule_id})\n"
+            f"> 环境: **{env_name}**\n"
+            f"> 时间: {timestamp}\n"
+            f"> 失败类型: **{type_label}**\n"
+            f"> 详情: {detail}\n"
+        )
+
+        await service.send_alert(
+            title=f"调度任务执行失败 - {schedule_name}",
+            level="error",
+            message=message,
+        )
+        _log.info(
+            "schedule_failure_alert_sent",
+            schedule_id=schedule_id,
+            failure_type=failure_type,
+        )
+    except Exception as e:
+        _log.error(
+            "schedule_failure_alert_failed",
+            schedule_id=schedule_id,
+            error=str(e),
+            exc_info=True,
+        )
 
 
 # ═══════════════════════════════════════════════════════════

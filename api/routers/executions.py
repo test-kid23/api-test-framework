@@ -25,13 +25,12 @@ import uuid
 from datetime import datetime, timezone
 from typing import Any
 
-import yaml
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.auth import CurrentUser, check_project_access, get_current_user, require_role
-from api.dependencies import create_independent_session, create_runner, get_db_session, parse_yaml_case
+from api.dependencies import create_independent_session, create_runner, get_db_session
 from api.schemas.common import (
     PaginatedResponse,
     PaginationMeta,
@@ -323,7 +322,7 @@ async def _dispatch_to_celery(
         return None
 
 
-# ── 本地后台执行（与 celery task 共享核心逻辑，路径不同但最终调用相同的 runner） ──
+# ── 本地后台执行（委托给 ExecutionOrchestrator 统一编排） ──
 
 
 async def _execute_cases_in_background(
@@ -333,7 +332,7 @@ async def _execute_cases_in_background(
 ) -> None:
     """后台异步执行用例序列（本地模式）
 
-    在 asyncio 事件循环中依次执行多个用例，使用独立 AsyncSession 将结果持久化到数据库。
+    委托给 ExecutionOrchestrator 统一编排，消除与 worker/tasks.py 的重复代码。
     """
     session: AsyncSession | None = None
     try:
@@ -344,136 +343,28 @@ async def _execute_cases_in_background(
         exec_repo = ExecutionRepository(session)
         result_repo = ExecutionResultRepository(session)
 
-        exec_model = await exec_repo.get(exec_uuid)
-        if exec_model is None:
-            _log.error("execution_not_found_in_background", exec_id=exec_id)
-            return
-        exec_model.status = ExecutionStatus.RUNNING.value
-        exec_model.started_at = datetime.now(timezone.utc)
-        await exec_repo.update(exec_model)
+        # 构建编排器上下文并委托执行
+        from framework.execution_orchestrator import ExecutionContext, ExecutionOrchestrator
 
-        results: list[dict[str, Any]] = []
-
-        for cid in case_ids:
-            try:
-                case_uuid = uuid.UUID(cid)
-            except ValueError:
-                _log.warning("invalid_case_id_in_background", case_id=cid)
-                results.append({
-                    "case_id": cid,
-                    "case_name": "unknown",
-                    "status": "ERROR",
-                    "error": f"用例 ID 格式无效: {cid}",
-                    "elapsed_ms": 0,
-                })
-                continue
-
-            case_result_row = await session.execute(
-                select(TestCaseModel.yaml_content, TestCaseModel.name).where(
-                    TestCaseModel.id == case_uuid
-                )
-            )
-            case_row = case_result_row.first()
-            if case_row is None:
-                results.append({
-                    "case_id": cid,
-                    "case_name": "unknown",
-                    "status": "ERROR",
-                    "error": "用例未找到",
-                    "elapsed_ms": 0,
-                })
-                continue
-
-            yaml_content = case_row.yaml_content
-            case_name = case_row.name
-
-            if not yaml_content:
-                await result_repo.save_result(
-                    execution_id=exec_uuid,
-                    case_result=_make_error_case_result(case_name, "yaml_content 为空"),
-                    case_id=case_uuid,
-                )
-                results.append({
-                    "case_id": cid,
-                    "case_name": case_name,
-                    "status": "ERROR",
-                    "error": "yaml_content 为空",
-                    "elapsed_ms": 0,
-                })
-                continue
-
-            try:
-                test_case = parse_yaml_case(yaml_content)
-            except yaml.YAMLError as e:
-                await result_repo.save_result(
-                    execution_id=exec_uuid,
-                    case_result=_make_error_case_result(case_name, f"YAML 解析失败: {e}"),
-                    case_id=case_uuid,
-                )
-                results.append({
-                    "case_id": cid,
-                    "case_name": case_name,
-                    "status": "ERROR",
-                    "error": f"YAML 解析失败: {e}",
-                    "elapsed_ms": 0,
-                })
-                continue
-
-            try:
-                case_result = await runner.arun_case(test_case, {})
-            except Exception as e:
-                await result_repo.save_result(
-                    execution_id=exec_uuid,
-                    case_result=_make_error_case_result(test_case.name, str(e)),
-                    case_id=case_uuid,
-                )
-                results.append({
-                    "case_id": cid,
-                    "case_name": test_case.name,
-                    "status": "ERROR",
-                    "error": str(e),
-                    "elapsed_ms": 0,
-                })
-                continue
-
-            await result_repo.save_result(
-                execution_id=exec_uuid,
-                case_result=case_result,
-                case_id=case_uuid,
-            )
-
-            results.append({
-                "case_id": cid,
-                "case_name": case_result.case_name,
-                "status": case_result.status.value,
-                "error": case_result.error,
-                "elapsed_ms": round(case_result.elapsed_ms, 2),
-            })
-
-        summary = _compute_summary(results)
-        final_status = _execution_status_from_summary(summary)
-
-        now = datetime.now(timezone.utc)
-        exec_model = await exec_repo.get(exec_uuid)
-        if exec_model is not None:
-            exec_model.status = final_status.value
-            exec_model.finished_at = now
-            await exec_repo.update(exec_model)
-
-        report = ReportModel(
-            execution_id=exec_uuid,
-            summary=json.dumps(summary, ensure_ascii=False),
-            detail_data=json.dumps(results, ensure_ascii=False, default=str),
+        ctx = ExecutionContext(
+            runner=runner,
+            execution_repo=exec_repo,
+            result_repo=result_repo,
+            env_name=env_name,
         )
-        session.add(report)
-        await session.commit()
+        orchestrator = ExecutionOrchestrator(ctx)
+        result = await orchestrator.execute_case_list_for_execution(
+            exec_uuid=exec_uuid,
+            case_ids=case_ids,
+            session=session,
+        )
 
         _log.info(
             "background_execution_completed",
             exec_id=exec_id,
-            status=final_status.value,
-            total=summary["total"],
-            passed=summary["passed"],
+            status=result.get("status"),
+            total=result.get("total"),
+            passed=result.get("passed"),
         )
 
     except Exception as e:
@@ -794,3 +685,61 @@ async def get_execution_report(
         finished_at=exec_model.finished_at,
     )
     return SuccessResponse(data=report)
+
+
+# ── GET /executions/{execution_id}/snapshot ───────────────
+
+
+@router.get(
+    "/{execution_id}/snapshot",
+    response_model=SuccessResponse[dict],
+    summary="查询执行上下文快照",
+    responses={
+        200: {"description": "快照数据"},
+        404: {"description": "快照不存在"},
+    },
+)
+async def get_execution_snapshot(
+    execution_id: str,
+    session: AsyncSession = Depends(get_db_session),
+    current_user: CurrentUser = Depends(get_current_user),
+):
+    """获取指定执行失败时的上下文快照（三层变量状态）。
+
+    用于失败现场回溯和复现。
+    """
+    try:
+        uid = uuid.UUID(execution_id)
+    except ValueError:
+        raise HTTPException(status_code=404, detail="执行记录不存在")
+
+    from framework.persistence.repositories.context_snapshot_repo import (
+        ContextSnapshotRepository,
+    )
+
+    exec_repo = ExecutionRepository(session)
+    exec_model = await exec_repo.get(uid)
+    if exec_model is None:
+        raise HTTPException(status_code=404, detail="执行记录不存在")
+
+    check_project_access(
+        str(exec_model.project_id) if exec_model.project_id else None,
+        current_user,
+        "执行记录",
+    )
+
+    snapshot_repo = ContextSnapshotRepository(session)
+    snapshot_model = await snapshot_repo.get_by_execution(uid)
+    if snapshot_model is None:
+        raise HTTPException(status_code=404, detail="快照不存在")
+
+    return SuccessResponse(data={
+        "execution_id": str(snapshot_model.execution_id),
+        "step_index": snapshot_model.step_index,
+        "run_vars": snapshot_model.run_vars,
+        "case_vars": snapshot_model.case_vars,
+        "step_vars": snapshot_model.step_vars,
+        "error_message": snapshot_model.error_message,
+        "traceback": snapshot_model.traceback,
+        "created_at": snapshot_model.created_at.isoformat() if snapshot_model.created_at else None,
+    })

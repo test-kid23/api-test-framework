@@ -1,6 +1,6 @@
 # AutoTest Framework — 企业级 API 自动化测试框架
 
-> **v2.2.0** | Python 3.12+ | pytest 8.x | httpx 0.28.x | YAML 驱动 | 结构化日志 | 策略模式引擎
+> **v2.4.0** | Python 3.12+ | pytest 8.x | httpx 0.28.x | YAML 驱动 | 结构化日志 | 策略模式引擎
 
 ## 目录
 
@@ -73,6 +73,10 @@
 | **多租户与 RBAC** | JWT + bcrypt + admin/editor/viewer 三级角色 |
 | **Web 管理前端** | React 18 + Vite + shadcn/ui，16 页面 + 20 路由 + TanStack Query |
 | **CI/CD 就绪** | GitHub Actions / Jenkins / GitLab CI / Docker Compose 全栈部署 |
+| **执行编排统一** | ExecutionOrchestrator 统一 Worker/本地执行逻辑，消除 80% 重复代码 |
+| **上下文快照** | 失败时自动持久化三层变量状态，敏感字段脱敏，支持失败现场复现 |
+| **调度失败告警** | 4 类失败场景自动告警，通过通知渠道实时推送 |
+| **K8s 部署支持** | Helm Chart + Deployment/Service/ConfigMap/HPA/Ingress 生产级编排 |
 
 ---
 
@@ -208,7 +212,7 @@ curl http://localhost:8000/health
 | 认证 | `POST` | `/api/v1/auth/register` | 用户注册 | ✅ |
 | 用例 | `POST` `GET` `PUT` `DELETE` | `/api/v1/cases` | 用例 CRUD + 版本历史 | ✅ |
 | 套件 | `POST` `GET` `PUT` `DELETE` | `/api/v1/suites` | 套件 CRUD | ✅ |
-| 执行 | `POST` `GET` | `/api/v1/executions` | 触发执行 + 历史查询 | ✅ |
+| 执行 | `POST` `GET` | `/api/v1/executions` | 触发执行 + 历史查询 + 快照查询 | ✅ |
 | 报告 | `GET` | `/api/v1/reports` | 报告查询 + 趋势分析 | ✅ |
 | 环境 | `POST` `GET` `PUT` `DELETE` | `/api/v1/environments` | 环境配置管理 | ✅ |
 | 调度 | `POST` `GET` `PUT` `DELETE` | `/api/v1/schedules` | 定时任务管理 | ✅ |
@@ -324,6 +328,8 @@ api-test-framework/
 │   └── static/                   #   Vite 前端构建产物
 ├── framework/                    # 框架核心代码
 │   ├── runner.py                 # 测试执行引擎（策略路由 + 插件调度）
+│   ├── execution_orchestrator.py # 统一执行编排器（Worker/本地共用）
+│   ├── context_snapshot.py       # 上下文快照管理器（失败现场复现）
 │   ├── client.py                 # HTTP 客户端（httpx + 拦截器链）
 │   ├── collector.py              # pytest 用例收集器（YamlCollector）
 │   ├── context.py                # 协程安全上下文（contextvars 三层作用域）
@@ -337,7 +343,7 @@ api-test-framework/
 │   ├── db.py                     # 数据库模块（SQLAlchemy 2.0）
 │   ├── cli.py                    # CLI 工具（run/sync/import/serve/report）
 │   ├── sync.py                   # YAML ↔ DB 双向同步
-│   ├── scheduler.py              # 调度引擎（APScheduler）
+│   ├── scheduler.py              # 调度引擎（APScheduler + 失败告警）
 │   ├── assertion/                # 断言引擎子包
 │   │   ├── engine.py             #   16 种操作符 + AssertionEngine
 │   │   └── smart.py              #   智能断言（Schema 推断 + 变更检测）
@@ -367,8 +373,8 @@ api-test-framework/
 │   ├── persistence/              # 数据持久化层
 │   │   ├── database.py           #   数据库连接管理
 │   │   ├── bridge.py             #   ORM ↔ Pydantic 桥接
-│   │   ├── models/               #   8 个 SQLAlchemy ORM 模型
-│   │   ├── repositories/         #   8 个 Repository 实现
+│   │   ├── models/               #   9 个 SQLAlchemy ORM 模型
+│   │   ├── repositories/         #   9 个 Repository 实现
 │   │   └── services/             #   业务服务层
 │   ├── plugins/                  # 插件系统
 │   │   ├── base.py               #   PluginBase（13 个生命周期钩子）
@@ -2051,7 +2057,7 @@ npm run build
 
 ## 开发计划
 
-当前版本 **v2.2.0**，架构评分 **9.20/10**，44/44 任务已完成（四个阶段全部完工）。
+当前版本 **v2.4.0**，架构评分 **9.33/10**，50/71 任务已完成（Phase 0a-5a）。
 
 | 阶段 | 状态 | 目标版本 |
 |------|------|---------|
@@ -2061,7 +2067,9 @@ npm run build
 | Phase 2: 引擎服务化与持久化 | ✅ 已完成 | v2.0.0 |
 | Phase 3: 平台化基础建设 | ✅ 已完成 | v2.1.0 |
 | Phase 4: 完整测试平台 | ✅ 已完成 | v2.2.0 |
-| Phase 5: 平台完善与生产化 | ⬜ 规划中 | v3.0.0 |
+| Phase 4+: 报告+K8s+推荐 | ✅ 已完成 | v2.3.0 |
+| Phase 5a: 生产稳定性 | 🔄 进行中 (3/4) | v2.4.0 |
+| Phase 5: 平台完善与生产化 | 🔄 进行中 | v3.0.0 |
 
 > 详细计划见 [`docs/development-plan.md`](docs/development-plan.md)
 

@@ -173,6 +173,69 @@ class NotificationService:
 
         return any(r is True for r in results)
 
+    # ── 通用告警 ────────────────────────────────────────
+
+    async def send_alert(
+        self,
+        title: str,
+        level: str,
+        message: str,
+        channels: list[str] | None = None,
+    ) -> bool:
+        """发送通用告警通知（不依赖 SuiteResult）
+
+        适用于调度失败、Worker 宕机等非执行结果的告警场景。
+
+        Args:
+            title: 告警标题。
+            level: 告警级别（info / warning / error / critical）。
+            message: 告警消息正文（Markdown 格式）。
+            channels: 目标渠道名称列表（如 ["wecom", "email"]），
+                      为 None 时发送到所有已配置的渠道。
+
+        Returns:
+            True 表示至少有一个渠道发送成功。
+        """
+        if not self._config.enabled:
+            logger.debug("alert_disabled")
+            return False
+
+        active_channels = [ch for ch in self._channels if ch.is_configured()]
+        if not active_channels:
+            logger.warning("no_active_alert_channels")
+            return False
+
+        # 渠道过滤
+        if channels:
+            active_channels = [
+                ch for ch in active_channels if ch.name() in channels
+            ]
+            if not active_channels:
+                logger.warning(
+                    "alert_no_matching_channels",
+                    requested=channels,
+                )
+                return False
+
+        level_icon = {"info": "ℹ️", "warning": "⚠️", "error": "❌", "critical": "🔥"}.get(
+            level, "📢"
+        )
+        full_title = f"{level_icon} {title}"
+        full_content = f"## {level.upper()}: {title}\n\n{message}"
+
+        send_tasks = [channel.send(full_title, full_content) for channel in active_channels]
+        results = await asyncio.gather(*send_tasks, return_exceptions=True)
+
+        success_count = sum(1 for r in results if r is True)
+        logger.info(
+            "alert_dispatch_complete",
+            title=title,
+            level=level,
+            total=len(active_channels),
+            success=success_count,
+        )
+        return success_count > 0
+
     # ── 工厂方法 ────────────────────────────────────────
 
     @classmethod
