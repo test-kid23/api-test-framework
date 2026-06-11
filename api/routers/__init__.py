@@ -14,6 +14,7 @@ from api.routers import (
     schedules,
     suites,
     users,
+    workers,
 )
 
 __all__ = [
@@ -30,4 +31,5 @@ __all__ = [
     "schedules",
     "suites",
     "users",
+    "workers",
 ]

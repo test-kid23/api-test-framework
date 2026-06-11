@@ -14,7 +14,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.openapi.utils import get_openapi
 from fastapi.responses import JSONResponse
 
-from api.routers import analytics, assertions, auth, cases, coverage, environments, executions, mocks, recorder, reports, schedules, suites, users
+from api.routers import analytics, assertions, auth, cases, coverage, environments, executions, mocks, recorder, reports, schedules, suites, users, workers
 from api.schemas.common import ErrorDetail, ErrorResponse
 from framework.mock.server import create_mock_app
 from framework.scheduler import get_scheduler
@@ -58,6 +58,7 @@ TAGS_METADATA = [
     {"name": "analytics", "description": "高级分析 — 稳定性排行、分位数、失败分类、ROI"},
     {"name": "coverage", "description": "覆盖率分析 — OpenAPI 覆盖率、缺口识别、智能生成"},
     {"name": "users", "description": "用户管理（admin）"},
+    {"name": "workers", "description": "Worker 健康监控 — 在线状态、心跳检测、离线告警"},
 ]
 
 
@@ -125,6 +126,38 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     except Exception as e:
         _log.error("scheduler_start_failed", error=str(e), exc_info=True)
 
+    # ── 初始化 Worker 健康监控 ──
+    try:
+        from framework.config import ConfigLoader
+
+        loader = ConfigLoader()
+        project_config, _ = loader.load()
+        celery_config: dict = project_config.execution.get("celery", {})
+        redis_url = celery_config.get("broker_url", "redis://localhost:6379/0")
+
+        # 尝试初始化 NotificationService（用于离线告警）
+        notification_service = None
+        try:
+            notifications_config = project_config.notifications
+            if notifications_config:
+                from framework.notifications.service import NotificationService
+                notification_service = NotificationService.from_config(
+                    notifications_config.model_dump() if hasattr(notifications_config, 'model_dump') else {},
+                    "",
+                )
+        except Exception:
+            pass
+
+        from framework.worker_health import get_worker_health_monitor
+
+        get_worker_health_monitor(
+            redis_url=redis_url,
+            notification_service=notification_service,
+        )
+        _log.info("worker_health_monitor_initialized")
+    except Exception as e:
+        _log.error("worker_health_monitor_init_failed", error=str(e), exc_info=True)
+
     yield
 
     # ── 关闭调度器 ──
@@ -180,6 +213,7 @@ def create_app() -> FastAPI:
     app.include_router(recorder.router)
     app.include_router(assertions.router)
     app.include_router(users.router)
+    app.include_router(workers.router)
 
     # ── Mock 服务器子应用 ────────────────────────────
     app.mount("/_mock", create_mock_app())

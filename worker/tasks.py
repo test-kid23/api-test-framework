@@ -9,15 +9,21 @@
 重构说明 (T5-01):
 - 核心执行逻辑已迁移至 framework/execution_orchestrator.py
 - 本模块仅负责 Celery 任务入口和异常处理包装
+
+T5-03 Worker 健康监控:
+- 通过 Celery worker_process_init 信号在 Worker 启动时注册 Redis 心跳
+- 通过 Celery worker_process_shutdown 信号在 Worker 关闭时停止心跳
 """
 
 from __future__ import annotations
 
 import asyncio
+import socket
 import uuid
 from datetime import datetime, timezone
 from typing import Any
 
+from celery.signals import worker_process_init, worker_process_shutdown
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.dependencies import create_independent_session, create_runner
@@ -154,3 +160,87 @@ async def _execute_cases_async(
     finally:
         if session is not None:
             await session.close()
+
+
+# ═══════════════════════════════════════════════════════════════
+# Celery Worker 生命周期信号 — 健康监控心跳 (T5-03)
+# ═══════════════════════════════════════════════════════════════
+
+
+@worker_process_init.connect
+def _on_worker_process_init(**kwargs: Any) -> None:
+    """Worker 子进程初始化时注册心跳。
+
+    在每个 Celery Worker 子进程启动时自动注册 Redis 心跳，
+    使 API 端能实时查询 Worker 在线状态。
+    """
+    import os
+
+    try:
+        from framework.config import ConfigLoader
+
+        loader = ConfigLoader()
+        project_config, _ = loader.load()
+        celery_config: dict = project_config.execution.get("celery", {})
+        redis_url = celery_config.get("broker_url", "redis://localhost:6379/0")
+
+        # 生成唯一 Worker ID: hostname-pid
+        hostname = socket.gethostname()
+        pid = os.getpid()
+        worker_id = f"{hostname}-{pid}"
+
+        async def _start_heartbeat() -> None:
+            from framework.worker_health import get_worker_health_monitor
+
+            monitor = get_worker_health_monitor(redis_url=redis_url)
+            await monitor.start_heartbeat(worker_id=worker_id, hostname=hostname)
+
+        asyncio.run(_start_heartbeat())
+
+        _log.info(
+            "worker_heartbeat_registered",
+            worker_id=worker_id,
+            hostname=hostname,
+            pid=pid,
+        )
+
+    except Exception as e:
+        _log.error(
+            "worker_heartbeat_init_failed",
+            error=str(e),
+            exc_info=True,
+        )
+
+
+@worker_process_shutdown.connect
+def _on_worker_process_shutdown(**kwargs: Any) -> None:
+    """Worker 子进程关闭时停止心跳。
+
+    清理 Redis 心跳键，避免离线 Worker 残留心跳数据。
+    """
+    import os
+
+    try:
+        hostname = socket.gethostname()
+        pid = os.getpid()
+        worker_id = f"{hostname}-{pid}"
+
+        async def _stop_heartbeat() -> None:
+            from framework.worker_health import get_worker_health_monitor, has_monitor
+
+            if has_monitor():
+                monitor = get_worker_health_monitor()
+                await monitor.stop_heartbeat(worker_id=worker_id)
+
+        asyncio.run(_stop_heartbeat())
+
+        _log.info(
+            "worker_heartbeat_stopped",
+            worker_id=worker_id,
+        )
+
+    except Exception as e:
+        _log.debug(
+            "worker_heartbeat_shutdown_clean",
+            error=str(e),
+        )
