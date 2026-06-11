@@ -1,0 +1,3 @@
+2026-06-11 06:42:07 [info     ] recording_started              session_id=baa2e68a8d80 session_name=test_session
+2026-06-11 06:42:07 [info     ] har_saved                      entries=0 path=recordings/test_session_baa2e68a8d80.har
+2026-06-11 06:42:07 [info     ] recording_stopped              duration_s=0.0 entry_count=0 har_path=recordings/test_session_baa2e68a8d80.har session_id=baa2e68a8d80
