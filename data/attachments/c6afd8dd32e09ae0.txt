@@ -1,0 +1,2 @@
+2026-06-12 06:26:52 [info     ] schema_inferred                case_name= field_count=2 required_count=2 sample_count=2
+2026-06-12 06:26:52 [info     ] structure_change_detected      case_name= change_count=1 has_errors=False has_warnings=False
