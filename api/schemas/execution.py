@@ -38,9 +38,8 @@ class ExecutionRequest(BaseModel):
     """触发执行请求"""
 
     case_ids: list[str] = Field(
-        ...,
-        min_length=1,
-        description="要执行的用例 ID 列表",
+        default_factory=list,
+        description="要执行的用例 ID 列表（与 suite_id 至少提供一个）",
     )
     suite_id: Optional[str] = Field(default=None, description="套件 ID（可选）")
     env: str = Field(default="dev", description="目标环境名称")

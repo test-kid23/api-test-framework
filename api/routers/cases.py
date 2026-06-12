@@ -73,6 +73,7 @@ def _orm_to_response(model: TestCaseModel) -> CaseResponse:
         priority=model.priority,
         yaml_content=model.yaml_content or "",
         timeout=None,  # TestCaseModel 无此字段
+        suite_name=getattr(model, "suite_name", None),
         version=model.version,
         created_at=model.created_at,
         updated_at=model.updated_at,
@@ -136,6 +137,7 @@ async def create_case(
         tags=_tags_to_json(body.tags),
         priority=body.priority,
         yaml_content=body.yaml_content,
+        suite_name=body.suite_name,
     )
     # 绑定到用户的第一个项目（如有关联）
     if current_user.primary_project_id:
@@ -298,6 +300,8 @@ async def update_case(
         model.priority = body.priority
     if body.yaml_content is not None:
         model.yaml_content = body.yaml_content
+    if body.suite_name is not None:
+        model.suite_name = body.suite_name
     # timeout 字段在 ORM 中不存在，忽略
 
     # 版本号递增

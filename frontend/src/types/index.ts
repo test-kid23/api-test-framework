@@ -29,6 +29,7 @@ export interface TestCase {
   priority: CasePriority;
   yaml_content: string;
   timeout: number | null;
+  suite_name: string | null;
   version: number;
   created_at: string;
   updated_at: string;
@@ -53,6 +54,7 @@ export interface TestCaseCreate {
   priority?: CasePriority;
   yaml_content: string;
   timeout?: number | null;
+  suite_name?: string;
 }
 
 export interface TestCaseUpdate {
@@ -62,6 +64,7 @@ export interface TestCaseUpdate {
   priority?: CasePriority;
   yaml_content?: string;
   timeout?: number | null;
+  suite_name?: string;
 }
 
 export interface CaseImportRequest {
@@ -481,7 +484,7 @@ export interface AssertionItemInfo {
 export interface SmartAssertionResponse {
   case_id: string | null;
   case_name: string;
-  schema: InferredSchemaInfo | null;
+  inferred_schema: InferredSchemaInfo | null;
   assertions: AssertionItemInfo[];
   sample_count: number;
 }

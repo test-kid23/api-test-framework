@@ -226,7 +226,7 @@ async def get_assertions(
         data=SmartAssertionResponse(
             case_id=case_id,
             case_name=schema.case_name,
-            schema=_schema_to_response(schema),
+            inferred_schema=_schema_to_response(schema),
             assertions=[
                 AssertionItemResponse(
                     path=a.path,

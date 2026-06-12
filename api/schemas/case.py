@@ -41,6 +41,11 @@ class CaseCreateRequest(BaseModel):
         le=3600,
         description="自定义超时（秒），为空则使用全局配置",
     )
+    suite_name: Optional[str] = Field(
+        default=None,
+        max_length=255,
+        description="所属套件名称",
+    )
 
 
 class CaseUpdateRequest(BaseModel):
@@ -70,6 +75,11 @@ class CaseUpdateRequest(BaseModel):
         le=3600,
         description="自定义超时（秒）",
     )
+    suite_name: Optional[str] = Field(
+        default=None,
+        max_length=255,
+        description="所属套件名称",
+    )
 
 
 # ==================== 响应体 ====================
@@ -84,6 +94,7 @@ class CaseResponse(TimestampMixin):
     priority: str = Field(default="P1", description="优先级")
     yaml_content: str = Field(..., description="YAML 内容")
     timeout: Optional[int] = Field(default=None, description="自定义超时")
+    suite_name: Optional[str] = Field(default=None, description="所属套件名称")
     version: int = Field(default=1, description="版本号")
 
 

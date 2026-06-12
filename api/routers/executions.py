@@ -49,6 +49,7 @@ from framework.models import CaseResult, CaseStatus
 from framework.persistence.models.execution import ExecutionModel, ExecutionResultModel
 from framework.persistence.models.report import ReportModel
 from framework.persistence.models.test_case import TestCaseModel
+from framework.persistence.models.test_suite import TestSuiteModel
 from framework.persistence.repositories.execution_repo import ExecutionRepository, ExecutionResultRepository
 from framework.utils.logger import Logger
 
@@ -228,8 +229,47 @@ async def trigger_execution(
     执行结果可通过 GET /executions/{id} 查询，
     分布式模式下还可通过 GET /executions/{id}/status 查询 Celery 任务实时状态。
     """
+    # ── 解析 suite_id（可选）──
+    suite_uuid: uuid.UUID | None = None
+    if body.suite_id:
+        try:
+            suite_uuid = uuid.UUID(body.suite_id)
+        except ValueError:
+            suite_uuid = None
+
+    # ── 若提供了 suite_id 但 case_ids 为空，从套件 config 中自动解析 ──
+    resolved_case_ids: list[str] = list(body.case_ids)
+    if suite_uuid and not resolved_case_ids:
+        suite_result = await session.execute(
+            select(TestSuiteModel.config).where(TestSuiteModel.id == suite_uuid)
+        )
+        suite_config = suite_result.scalar_one_or_none()
+        if suite_config is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"套件不存在: {body.suite_id}",
+            )
+        if isinstance(suite_config, str):
+            try:
+                suite_config = json.loads(suite_config)
+            except (json.JSONDecodeError, TypeError):
+                suite_config = {}
+        resolved_case_ids = suite_config.get("case_ids", []) if isinstance(suite_config, dict) else []
+        if not resolved_case_ids:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"套件 {body.suite_id} 中没有关联任何用例",
+            )
+
+    # 至少需要一个用例
+    if not resolved_case_ids:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="请提供至少一个用例 ID 或有效的套件 ID",
+        )
+
     # 验证所有 case_ids 存在
-    for cid in body.case_ids:
+    for cid in resolved_case_ids:
         try:
             case_uuid = uuid.UUID(cid)
         except ValueError:
@@ -245,14 +285,6 @@ async def trigger_execution(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail=f"用例不存在: {cid}",
             )
-
-    # 解析 suite_id（可选）
-    suite_uuid: uuid.UUID | None = None
-    if body.suite_id:
-        try:
-            suite_uuid = uuid.UUID(body.suite_id)
-        except ValueError:
-            suite_uuid = None
 
     # 创建执行记录
     exec_id = uuid.uuid4()
@@ -276,7 +308,7 @@ async def trigger_execution(
     if mode == "distributed":
         celery_task_id = await _dispatch_to_celery(
             exec_id=str(exec_id),
-            case_ids=body.case_ids,
+            case_ids=resolved_case_ids,
             env_name=body.env,
             session=session,
             exec_uuid=exec_id,
@@ -295,7 +327,7 @@ async def trigger_execution(
         bg_task = asyncio.create_task(
             _execute_cases_in_background(
                 exec_id=str(exec_id),
-                case_ids=body.case_ids,
+                case_ids=resolved_case_ids,
                 env_name=body.env,
             )
         )
@@ -310,7 +342,7 @@ async def trigger_execution(
         env=body.env,
         mode=actual_mode,
         celery_task_id=celery_task_id,
-        case_ids=body.case_ids,
+        case_ids=resolved_case_ids,
         suite_id=body.suite_id,
         results=[],
         created_at=exec_model.created_at,

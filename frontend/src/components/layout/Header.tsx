@@ -132,8 +132,8 @@ export function Header() {
         </div>
 
         <div className="flex items-center gap-3">
-          {/* Language Switcher */}
-          <LanguageSwitcher />
+          {/* Language Switcher — 暂时禁用，等 i18n 完整翻译后再启用 */}
+          {/* <LanguageSwitcher /> */}
 
           {/* Theme toggle */}
           <Button

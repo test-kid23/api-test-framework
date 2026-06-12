@@ -64,6 +64,9 @@ class SuiteResponse(BaseModel):
     id: str
     name: str
     description: str = ""
+    tags: list[str] = []
+    config: dict[str, Any] = {}
+    case_ids: list[str] = []
     created_at: str
     updated_at: str
 
@@ -74,6 +77,8 @@ class SuiteListItem(BaseModel):
     id: str
     name: str
     description: str = ""
+    tags: list[str] = []
+    case_ids: list[str] = []
     created_at: str
     updated_at: str
 
@@ -81,12 +86,26 @@ class SuiteListItem(BaseModel):
 # ── Helpers ───────────────────────────────────────────────
 
 
+def _parse_config(config_str: str | None) -> dict[str, Any]:
+    """解析 config JSON，返回 dict。"""
+    if not config_str:
+        return {}
+    try:
+        return json.loads(config_str)
+    except (json.JSONDecodeError, TypeError):
+        return {}
+
+
 def _orm_to_response(model: TestSuiteModel) -> SuiteResponse:
     """将 ORM 模型转换为 API 响应。"""
+    cfg = _parse_config(model.config)
     return SuiteResponse(
         id=str(model.id),
         name=model.name,
         description=model.description or "",
+        tags=cfg.get("tags", []),
+        config=cfg,
+        case_ids=cfg.get("case_ids", []),
         created_at=model.created_at.isoformat() if model.created_at else "",
         updated_at=model.updated_at.isoformat() if model.updated_at else "",
     )
@@ -94,10 +113,13 @@ def _orm_to_response(model: TestSuiteModel) -> SuiteResponse:
 
 def _orm_to_list_item(model: TestSuiteModel) -> SuiteListItem:
     """将 ORM 模型转换为列表项响应。"""
+    cfg = _parse_config(model.config)
     return SuiteListItem(
         id=str(model.id),
         name=model.name,
         description=model.description or "",
+        tags=cfg.get("tags", []),
+        case_ids=cfg.get("case_ids", []),
         created_at=model.created_at.isoformat() if model.created_at else "",
         updated_at=model.updated_at.isoformat() if model.updated_at else "",
     )
@@ -118,10 +140,14 @@ async def create_suite(
     current_user: CurrentUser = Depends(require_role("admin", "editor")),
 ):
     repo = SuiteRepository(session)
+    # 将 case_ids / tags 合并到 config 中存储
+    merged_config: dict[str, Any] = {**body.config}
+    merged_config["tags"] = body.tags
+    merged_config["case_ids"] = body.case_ids
     model = TestSuiteModel(
         name=body.name,
         description=body.description,
-        config=json.dumps(body.config, ensure_ascii=False) if body.config else None,
+        config=json.dumps(merged_config, ensure_ascii=False),
     )
     if current_user.primary_project_id:
         model.project_id = uuid.UUID(current_user.primary_project_id)
@@ -234,10 +260,16 @@ async def update_suite(
         model.name = body.name
     if body.description is not None:
         model.description = body.description
-    if body.config is not None:
-        model.config = json.dumps(body.config, ensure_ascii=False)
 
-    # tags 和 case_ids 在 ORM 中不存在，忽略
+    # 更新 config：合并 tags 和 case_ids 到 config JSON 中
+    cfg = _parse_config(model.config)
+    if body.config is not None:
+        cfg.update(body.config)
+    if body.tags is not None:
+        cfg["tags"] = body.tags
+    if body.case_ids is not None:
+        cfg["case_ids"] = body.case_ids
+    model.config = json.dumps(cfg, ensure_ascii=False)
 
     await repo.update(model)
     await session.commit()

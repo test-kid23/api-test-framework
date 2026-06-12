@@ -90,7 +90,7 @@ export function useSmartAssertion(): UseSmartAssertionReturn {
         assertionsApi.getAssertions(caseId, excludePaths, includeOnly)
       );
       if (result) {
-        if (result.schema) setSchema(result.schema);
+        if (result.inferred_schema) setSchema(result.inferred_schema);
         setAssertions(result.assertions || []);
       }
     },

@@ -110,7 +110,7 @@ class SmartAssertionResponse(BaseModel):
 
     case_id: Optional[str] = Field(default=None, description="用例 ID")
     case_name: str = Field(default="", description="用例名称")
-    schema: Optional[InferredSchemaResponse] = Field(
+    inferred_schema: Optional[InferredSchemaResponse] = Field(
         default=None, description="推断的 Schema"
     )
     assertions: list[AssertionItemResponse] = Field(

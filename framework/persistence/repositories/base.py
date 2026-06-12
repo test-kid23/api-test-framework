@@ -81,6 +81,7 @@ class BaseRepository(Generic[TModel]):
     async def update(self, instance: TModel) -> TModel:
         """更新已存在的实例（需在 session 内已 tracked）。"""
         await self._session.flush()
+        await self._session.refresh(instance)
         return instance
 
     async def delete(self, instance: TModel) -> None:

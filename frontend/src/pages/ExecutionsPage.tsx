@@ -39,7 +39,7 @@ export function ExecutionsPage() {
 
   const [triggerOpen, setTriggerOpen] = useState(false);
   const [triggerEnv, setTriggerEnv] = useState("");
-  const [triggerSuiteId, setTriggerSuiteId] = useState("");
+  const [triggerSuiteId, setTriggerSuiteId] = useState("__none__");
 
   const { data, isLoading, isError, isFetching } = useExecutions({
     page,
@@ -61,7 +61,7 @@ export function ExecutionsPage() {
     try {
       await triggerMutation.mutateAsync({
         case_ids: [],
-        suite_id: triggerSuiteId || undefined,
+        suite_id: triggerSuiteId === "__none__" ? undefined : triggerSuiteId,
         env: triggerEnv,
         trigger: "manual",
       });
@@ -168,6 +168,7 @@ export function ExecutionsPage() {
               <Table>
                 <TableHeader>
                   <TableRow>
+                    <TableHead className="w-[60px]">{t("executions.no")}</TableHead>
                     <TableHead>{t("executions.execName")}</TableHead>
                     <TableHead className="w-[90px]">{t("executions.statusLabel")}</TableHead>
                     <TableHead className="w-[110px]">{t("executions.passFail")}</TableHead>
@@ -178,7 +179,7 @@ export function ExecutionsPage() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {data.items.map((ex: Execution) => {
+                  {data.items.map((ex: Execution, idx: number) => {
                     const summary = ex.summary;
                     const isRunning = ex.status === "RUNNING";
                     const progress =
@@ -194,6 +195,9 @@ export function ExecutionsPage() {
                         className="cursor-pointer hover:bg-muted/50"
                         onClick={() => navigate(`/executions/${ex.id}`)}
                       >
+                        <TableCell className="text-sm text-muted-foreground">
+                          {(page - 1) * 15 + idx + 1}
+                        </TableCell>
                         <TableCell>
                           <div>
                             <p className="font-medium">{ex.name || t("executions.unnamed")}</p>
@@ -273,35 +277,43 @@ export function ExecutionsPage() {
                 <span className="text-sm text-muted-foreground">
                   {t("executions.totalCases", { count: data.pagination.total })}
                 </span>
-                <div className="flex gap-2">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    disabled={page <= 1}
-                    onClick={() =>
-                      setSearchParams((prev) => {
-                        const n = new URLSearchParams(prev);
-                        n.set("page", String(page - 1));
-                        return n;
-                      })
-                    }
-                  >
-                    {t("executions.prevPage")}
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    disabled={page >= (data.pagination.total_pages || 1)}
-                    onClick={() =>
-                      setSearchParams((prev) => {
-                        const n = new URLSearchParams(prev);
-                        n.set("page", String(page + 1));
-                        return n;
-                      })
-                    }
-                  >
-                    {t("executions.nextPage")}
-                  </Button>
+                <div className="flex items-center gap-3">
+                  <span className="text-sm text-muted-foreground">
+                    {t("executions.pageInfo", {
+                      page,
+                      totalPages: data.pagination.total_pages || 1,
+                    })}
+                  </span>
+                  <div className="flex gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      disabled={page <= 1}
+                      onClick={() =>
+                        setSearchParams((prev) => {
+                          const n = new URLSearchParams(prev);
+                          n.set("page", String(page - 1));
+                          return n;
+                        })
+                      }
+                    >
+                      {t("executions.prevPage")}
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      disabled={page >= (data.pagination.total_pages || 1)}
+                      onClick={() =>
+                        setSearchParams((prev) => {
+                          const n = new URLSearchParams(prev);
+                          n.set("page", String(page + 1));
+                          return n;
+                        })
+                      }
+                    >
+                      {t("executions.nextPage")}
+                    </Button>
+                  </div>
                 </div>
               </div>
             </>
@@ -350,7 +362,7 @@ export function ExecutionsPage() {
                   <SelectValue placeholder={t("executions.selectSuiteOrEmpty")} />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">{t("executions.noSuite")}</SelectItem>
+                  <SelectItem value="__none__">{t("executions.noSuite")}</SelectItem>
                   {suites.map((s: { id: string; name: string }) => (
                     <SelectItem key={s.id} value={s.id}>
                       {s.name}

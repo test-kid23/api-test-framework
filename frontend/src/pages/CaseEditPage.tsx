@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { useCase, useCreateCase, useUpdateCase } from "@/hooks/useCases";
-import { useSuites } from "@/hooks/useSuites";
+import { useSuites, useUpdateSuite } from "@/hooks/useSuites";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -28,6 +28,7 @@ export function CaseEditPage() {
   const { data: suitesData } = useSuites({ page_size: 100 });
   const createCase = useCreateCase();
   const updateCase = useUpdateCase();
+  const updateSuite = useUpdateSuite();
 
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
@@ -35,6 +36,7 @@ export function CaseEditPage() {
   const [tags, setTags] = useState<string[]>([]);
   const [priority, setPriority] = useState<string>("P2");
   const [timeout, setTimeout_] = useState<string>("");
+  const [suiteName, setSuiteName] = useState<string>("");
   const [lineCount, setLineCount] = useState(1);
 
   useEffect(() => {
@@ -45,6 +47,7 @@ export function CaseEditPage() {
       setTags(existingCase.tags || []);
       setPriority(existingCase.priority);
       setTimeout_(existingCase.timeout?.toString() || "");
+      setSuiteName(existingCase.suite_name || "");
     }
   }, [existingCase]);
 
@@ -54,23 +57,50 @@ export function CaseEditPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    const payload = {
+
+    // 过滤掉 null / undefined / 空字符串，避免 Pydantic 校验失败
+    const payload: Record<string, unknown> = {
       name,
-      description: description || undefined,
       yaml_content: yamlContent,
       tags,
       priority: priority as "P0" | "P1" | "P2" | "P3",
-      timeout: timeout ? Number(timeout) : null,
     };
+    if (description.trim()) {
+      payload.description = description.trim();
+    }
+    if (timeout && !isNaN(Number(timeout))) {
+      payload.timeout = Number(timeout);
+    }
+    if (suiteName && suiteName !== "__none__") {
+      payload.suite_name = suiteName;
+    }
 
     try {
+      let savedCaseId = id;
       if (isEdit) {
-        await updateCase.mutateAsync({ id: id!, payload });
+        const updated = await updateCase.mutateAsync({ id: id!, payload });
+        savedCaseId = updated.id;
         toast.success("用例已更新");
       } else {
-        await createCase.mutateAsync(payload);
+        const created = await createCase.mutateAsync(payload);
+        savedCaseId = created.id;
         toast.success("用例已创建");
       }
+
+      // 如果选择了套件，把用例 ID 同步到套件的 case_ids
+      if (suiteName && suiteName !== "__none__" && savedCaseId) {
+        const suite = suites.find((s: { name: string }) => s.name === suiteName);
+        if (suite) {
+          const currentIds = suite.case_ids || [];
+          if (!currentIds.includes(savedCaseId)) {
+            await updateSuite.mutateAsync({
+              id: suite.id,
+              payload: { case_ids: [...currentIds, savedCaseId] },
+            });
+          }
+        }
+      }
+
       navigate("/cases");
     } catch {
       toast.error("保存失败，请检查后端服务");
@@ -206,14 +236,14 @@ export function CaseEditPage() {
 
                   <div className="space-y-2">
                     <Label htmlFor="suite">关联套件</Label>
-                    <Select>
+                    <Select value={suiteName || "__none__"} onValueChange={setSuiteName}>
                       <SelectTrigger id="suite">
                         <SelectValue placeholder="选择套件..." />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="none">不关联</SelectItem>
+                        <SelectItem value="__none__">不关联</SelectItem>
                         {suites.map((s: { id: string; name: string }) => (
-                          <SelectItem key={s.id} value={s.id}>
+                          <SelectItem key={s.id} value={s.name}>
                             {s.name}
                           </SelectItem>
                         ))}

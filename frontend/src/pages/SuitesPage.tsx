@@ -50,6 +50,7 @@ export function SuitesPage() {
   const [formName, setFormName] = useState("");
   const [formDesc, setFormDesc] = useState("");
   const [formCaseIds, setFormCaseIds] = useState<string[]>([]);
+  const [caseSearch, setCaseSearch] = useState("");
 
   const suites = data?.items ?? [];
   const allCases = casesData?.items ?? [];
@@ -59,6 +60,7 @@ export function SuitesPage() {
     setFormName("");
     setFormDesc("");
     setFormCaseIds([]);
+    setCaseSearch("");
     setDialogOpen(true);
   }
 
@@ -67,6 +69,7 @@ export function SuitesPage() {
     setFormName(suite.name);
     setFormDesc(suite.description || "");
     setFormCaseIds(suite.case_ids || []);
+    setCaseSearch("");
     setDialogOpen(true);
   }
 
@@ -292,7 +295,12 @@ export function SuitesPage() {
             </div>
             <div className="space-y-2">
               <Label>{t("suites.linkedCases")}</Label>
-              <div className="text-xs text-muted-foreground mb-2">
+              <Input
+                placeholder={t("suites.searchCasesPlaceholder")}
+                value={caseSearch}
+                onChange={(e) => setCaseSearch(e.target.value)}
+              />
+              <div className="text-xs text-muted-foreground">
                 {t("suites.selectedCount", { selected: formCaseIds.length, total: allCases.length })}
               </div>
               <ScrollArea className="h-48 rounded-md border">
@@ -300,21 +308,43 @@ export function SuitesPage() {
                   {allCases.length === 0 ? (
                     <p className="text-sm text-muted-foreground p-2">{t("suites.noAvailableCases")}</p>
                   ) : (
-                    allCases.map((c) => (
-                      <label
-                        key={c.id}
-                        className="flex items-center gap-2 rounded-md px-2 py-1.5 hover:bg-accent cursor-pointer"
-                      >
-                        <Checkbox
-                          checked={formCaseIds.includes(c.id)}
-                          onCheckedChange={() => toggleCaseId(c.id)}
-                        />
-                        <span className="text-sm truncate flex-1">{c.name}</span>
-                        <Badge variant="outline" className="text-xs flex-shrink-0">
-                          {c.priority}
-                        </Badge>
-                      </label>
-                    ))
+                    (() => {
+                      const lowerSearch = caseSearch.toLowerCase();
+                      // 排序：已关联的置顶，再按名称过滤
+                      const filtered = allCases
+                        .filter((c) =>
+                          !caseSearch || c.name.toLowerCase().includes(lowerSearch)
+                        )
+                        .sort((a, b) => {
+                          const aLinked = formCaseIds.includes(a.id) ? 0 : 1;
+                          const bLinked = formCaseIds.includes(b.id) ? 0 : 1;
+                          return aLinked - bLinked || a.name.localeCompare(b.name);
+                        });
+                      if (filtered.length === 0) {
+                        return (
+                          <p className="text-sm text-muted-foreground p-2">
+                            {t("suites.noFilteredCases")}
+                          </p>
+                        );
+                      }
+                      return filtered.map((c) => (
+                        <label
+                          key={c.id}
+                          className={`flex items-center gap-2 rounded-md px-2 py-1.5 hover:bg-accent cursor-pointer ${
+                            formCaseIds.includes(c.id) ? "bg-accent/50" : ""
+                          }`}
+                        >
+                          <Checkbox
+                            checked={formCaseIds.includes(c.id)}
+                            onCheckedChange={() => toggleCaseId(c.id)}
+                          />
+                          <span className="text-sm truncate flex-1">{c.name}</span>
+                          <Badge variant="outline" className="text-xs flex-shrink-0">
+                            {c.priority}
+                          </Badge>
+                        </label>
+                      ));
+                    })()
                   )}
                 </div>
               </ScrollArea>

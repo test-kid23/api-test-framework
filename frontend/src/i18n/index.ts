@@ -16,19 +16,14 @@ const resources = {
 };
 
 i18n
-  .use(LanguageDetector)
   .use(initReactI18next)
   .init({
     resources,
+    lng: "zh-CN",
     fallbackLng: "zh-CN",
     debug: false,
     interpolation: {
       escapeValue: false, // React 已内置 XSS 防护
-    },
-    detection: {
-      order: ["localStorage", "navigator"],
-      caches: ["localStorage"],
-      lookupLocalStorage: "autotest-lang",
     },
   });
 
