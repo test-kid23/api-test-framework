@@ -1,2 +1,0 @@
-2026-06-14 06:27:07 [info     ] schema_inferred                case_name= field_count=4 required_count=4 sample_count=2
-2026-06-14 06:27:07 [info     ] assertions_generated           assertion_count=6 case_name= field_count=4

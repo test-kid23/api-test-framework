@@ -1,0 +1,1 @@
+2026-06-15 07:10:04 [info     ] schema_inferred                case_name= field_count=1 required_count=1 sample_count=1

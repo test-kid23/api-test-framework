@@ -1,1 +1,0 @@
-2026-06-14 06:27:06 [info     ] file_parsed                    case_count=3 filename=test_auth.yaml suite_name=认证接口测试
