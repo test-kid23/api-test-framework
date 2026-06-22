@@ -84,7 +84,7 @@ export function CoveragePage() {
 
   const handleAnalyze = useCallback(async () => {
     if (!specUrl.trim()) {
-      toast.error("请输入 OpenAPI Spec URL");
+      toast.error("请输入 OpenAPI 规范 URL");
       return;
     }
     setAnalyzing(true);
@@ -107,7 +107,7 @@ export function CoveragePage() {
 
   const handleGenerate = useCallback(async () => {
     if (!specUrl.trim()) {
-      toast.error("请输入 OpenAPI Spec URL");
+      toast.error("请输入 OpenAPI 规范 URL");
       return;
     }
     setGenerating(true);
@@ -130,7 +130,7 @@ export function CoveragePage() {
 
   const handleGenerateAndSave = useCallback(async () => {
     if (!specUrl.trim()) {
-      toast.error("请输入 OpenAPI Spec URL");
+      toast.error("请输入 OpenAPI 规范 URL");
       return;
     }
     setSaving(true);
@@ -166,7 +166,7 @@ export function CoveragePage() {
       <div>
         <h1 className="text-2xl font-bold tracking-tight">覆盖率分析</h1>
         <p className="text-sm text-muted-foreground mt-1">
-          对比 OpenAPI Spec 与已有用例，识别未覆盖的 API 并推荐生成测试用例
+          对比 OpenAPI 规范与已有用例，识别未覆盖的 API 并推荐生成测试用例
         </p>
       </div>
 
@@ -176,7 +176,7 @@ export function CoveragePage() {
           <div className="flex gap-3">
             <div className="flex-1">
               <Label htmlFor="spec-url" className="mb-2 block">
-                OpenAPI Spec URL
+                OpenAPI 规范 URL
               </Label>
               <Input
                 id="spec-url"
@@ -334,8 +334,8 @@ export function CoveragePage() {
             {/* Overview: 分组统计 */}
             <TabsContent value="overview" className="space-y-4 mt-4">
               <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-                <GroupCoverageCard title="按 Method 分组" groups={report.by_method} />
-                <GroupCoverageCard title="按 Tag 分组" groups={report.by_tag} />
+                <GroupCoverageCard title="按请求方法分组" groups={report.by_method} />
+                <GroupCoverageCard title="按标签分组" groups={report.by_tag} />
                 <GroupCoverageCard title="按优先级分组" groups={report.by_priority} />
               </div>
             </TabsContent>
@@ -363,10 +363,10 @@ export function CoveragePage() {
                     <Table>
                       <TableHeader>
                         <TableRow>
-                          <TableHead className="w-[80px]">Method</TableHead>
-                          <TableHead>Path</TableHead>
+                          <TableHead className="w-[80px]">请求方法</TableHead>
+                          <TableHead>接口路径</TableHead>
                           <TableHead className="w-[120px]">优先级</TableHead>
-                          <TableHead className="w-[100px]">Tags</TableHead>
+                          <TableHead className="w-[100px]">标签</TableHead>
                           <TableHead className="w-[120px]">相似用例</TableHead>
                         </TableRow>
                       </TableHeader>
@@ -444,8 +444,8 @@ export function CoveragePage() {
                       <TableHeader>
                         <TableRow>
                           <TableHead className="w-[50px]">#</TableHead>
-                          <TableHead className="w-[80px]">Method</TableHead>
-                          <TableHead>Path</TableHead>
+                          <TableHead className="w-[80px]">请求方法</TableHead>
+                          <TableHead>接口路径</TableHead>
                           <TableHead className="w-[120px]">优先级</TableHead>
                           <TableHead>摘要</TableHead>
                         </TableRow>
@@ -497,8 +497,8 @@ export function CoveragePage() {
                       <Table>
                         <TableHeader>
                           <TableRow>
-                            <TableHead className="w-[80px]">Method</TableHead>
-                            <TableHead>Path</TableHead>
+                            <TableHead className="w-[80px]">请求方法</TableHead>
+                            <TableHead>接口路径</TableHead>
                             <TableHead>用例名称</TableHead>
                             <TableHead className="w-[80px]">优先级</TableHead>
                             <TableHead className="w-[100px]">操作</TableHead>
@@ -554,7 +554,7 @@ export function CoveragePage() {
           <CardContent className="flex flex-col items-center justify-center py-16">
             <BarChart3 className="h-16 w-16 text-muted-foreground/30 mb-4" />
             <h3 className="text-lg font-semibold text-muted-foreground mb-2">
-              输入 OpenAPI Spec URL 开始分析
+              输入 OpenAPI 规范 URL 开始分析
             </h3>
             <p className="text-sm text-muted-foreground/70 max-w-md text-center">
               支持 OpenAPI 3.x 规范（JSON/YAML），系统将自动对比已有用例，

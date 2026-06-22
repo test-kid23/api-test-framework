@@ -1,15 +1,22 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { useExecutions, useTriggerExecution } from "@/hooks/useExecutions";
 import { useSuites } from "@/hooks/useSuites";
 import { useEnvironments } from "@/hooks/useEnvironments";
+import { useAppStore } from "@/store/appStore";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
 import { Skeleton } from "@/components/ui/skeleton";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+  TooltipProvider,
+} from "@/components/ui/tooltip";
 import {
   Dialog, DialogContent, DialogDescription, DialogFooter,
   DialogHeader, DialogTitle,
@@ -34,12 +41,22 @@ export function ExecutionsPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const { canEdit } = usePermission();
 
+  const globalEnv = useAppStore((s) => s.selectedEnv);
+  const setGlobalEnv = useAppStore((s) => s.setSelectedEnv);
+
   const page = Number(searchParams.get("page") || "1");
   const statusFilter = searchParams.get("status") || "all";
 
   const [triggerOpen, setTriggerOpen] = useState(false);
-  const [triggerEnv, setTriggerEnv] = useState("");
+  const [triggerEnv, setTriggerEnv] = useState(globalEnv);
   const [triggerSuiteId, setTriggerSuiteId] = useState("");
+
+  // 打开 Dialog 时同步全局环境到本地下拉框
+  useEffect(() => {
+    if (triggerOpen) {
+      setTriggerEnv(globalEnv);
+    }
+  }, [triggerOpen, globalEnv]);
 
   const { data, isLoading, isError, isFetching } = useExecutions({
     page,
@@ -65,6 +82,7 @@ export function ExecutionsPage() {
         env: triggerEnv,
         trigger: "manual",
       });
+      setGlobalEnv(triggerEnv);
       toast.success(t("executions.execTriggered"));
       setTriggerOpen(false);
     } catch {
@@ -75,14 +93,32 @@ export function ExecutionsPage() {
   const formatDate = (dateStr: string | null) => {
     if (!dateStr) return "-";
     try {
-      return format(new Date(dateStr), "MM-dd HH:mm:ss", { locale: zhCN });
+      // SQLite 存储的 UTC 时间可能丢失时区标记，补上 +00:00 确保正确转为本地时间
+      let date = new Date(dateStr);
+      if (isNaN(date.getTime())) return dateStr;
+      // 如果字符串不含时区信息（不以 Z 或 ±HH:MM 结尾），当作 UTC
+      if (!/[+-]\d{2}:\d{2}$/.test(dateStr) && !dateStr.endsWith("Z")) {
+        date = new Date(dateStr + "+00:00");
+      }
+      return format(date, "MM-dd HH:mm:ss", { locale: zhCN });
     } catch {
       return dateStr;
     }
   };
 
+  // 环境名称 → 颜色映射（区分 dev / staging / prod 等）
+  const getEnvBadgeClass = (e: string): string => {
+    const key = e.toLowerCase();
+    if (key === "prod" || key === "production") return "bg-emerald-100 text-emerald-700 border-emerald-200";
+    if (key === "staging" || key === "uat" || key === "pre") return "bg-amber-100 text-amber-700 border-amber-200";
+    if (key === "dev" || key === "development") return "bg-sky-100 text-sky-700 border-sky-200";
+    if (key === "test" || key === "testing") return "bg-violet-100 text-violet-700 border-violet-200";
+    return "bg-slate-100 text-slate-600 border-slate-200";
+  };
+
   return (
-    <div className="space-y-4">
+    <TooltipProvider>
+      <div className="space-y-4">
       {/* Header */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
@@ -106,7 +142,7 @@ export function ExecutionsPage() {
       <div className="flex gap-1 bg-muted rounded-lg p-1 w-fit">
         {["all", "PASSED", "FAILED", "RUNNING", "PENDING"].map((s) => {
           const labelKey: Record<string, string> = {
-            all: "executions:all", PASSED: "executions:passed", FAILED: "executions:failed", RUNNING: "executions:running", PENDING: "executions:pending",
+            all: "executions.all", PASSED: "executions.passed", FAILED: "executions.failed", RUNNING: "executions.running", PENDING: "executions.pending",
           };
           return (
             <Button
@@ -135,26 +171,28 @@ export function ExecutionsPage() {
           {isLoading ? (
             <div className="p-6 space-y-0">
               <div className="flex items-center gap-4 pb-3 border-b">
+                <Skeleton className="h-4 w-8" />
                 <Skeleton className="h-4 w-32" />
-                <Skeleton className="h-4 w-20" />
-                <Skeleton className="h-4 w-24 ml-auto" />
                 <Skeleton className="h-4 w-12" />
-                <Skeleton className="h-4 w-28" />
-                <Skeleton className="h-4 w-28" />
+                <Skeleton className="h-4 w-14" />
                 <Skeleton className="h-4 w-16" />
+                <Skeleton className="h-4 w-10" />
+                <Skeleton className="h-4 w-24" />
+                <Skeleton className="h-4 w-8 ml-auto" />
               </div>
               {Array.from({ length: 5 }).map((_, i) => (
                 <div key={i} className="flex items-center gap-4 py-3 border-b last:border-0">
-                  <Skeleton className="h-4 w-40" />
+                  <Skeleton className="h-4 w-8" />
+                  <Skeleton className="h-4 w-36" />
+                  <Skeleton className="h-5 w-10 rounded-full" />
                   <Skeleton className="h-5 w-14 rounded-full" />
-                  <div className="flex items-center gap-2 ml-auto">
-                    <Skeleton className="h-4 w-8" />
+                  <div className="flex items-center gap-1.5">
+                    <Skeleton className="h-4 w-5" />
                     <Skeleton className="h-4 w-4" />
-                    <Skeleton className="h-4 w-8" />
+                    <Skeleton className="h-4 w-5" />
                   </div>
-                  <Skeleton className="h-4 w-12" />
-                  <Skeleton className="h-4 w-28" />
-                  <Skeleton className="h-4 w-28" />
+                  <Skeleton className="h-4 w-10" />
+                  <Skeleton className="h-4 w-24" />
                   <Skeleton className="h-8 w-8 rounded" />
                 </div>
               ))}
@@ -168,13 +206,14 @@ export function ExecutionsPage() {
               <Table>
                 <TableHeader>
                   <TableRow>
+                    <TableHead className="w-[56px]">{t("executions.idCol")}</TableHead>
                     <TableHead>{t("executions.execName")}</TableHead>
-                    <TableHead className="w-[90px]">{t("executions.statusLabel")}</TableHead>
+                    <TableHead className="w-[76px]">{t("executions.envLabel")}</TableHead>
+                    <TableHead className="w-[88px]">{t("executions.statusLabel")}</TableHead>
                     <TableHead className="w-[110px]">{t("executions.passFail")}</TableHead>
-                    <TableHead className="w-[70px]">{t("executions.trigger")}</TableHead>
+                    <TableHead className="w-[64px]">{t("executions.trigger")}</TableHead>
                     <TableHead className="w-[130px]">{t("executions.startTimeCol")}</TableHead>
-                    <TableHead className="w-[130px]">{t("executions.endTimeCol")}</TableHead>
-                    <TableHead className="w-[80px]">{t("executions.actions")}</TableHead>
+                    <TableHead className="w-[64px]">{t("executions.actions")}</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -188,20 +227,59 @@ export function ExecutionsPage() {
                           100
                         : 0;
 
+                    const caseNames = ex.case_names || [];
+                    const multiCase = caseNames.length > 1;
+                    const caseCount = caseNames.length;
+
                     return (
                       <TableRow
                         key={ex.id}
                         className="cursor-pointer hover:bg-muted/50"
                         onClick={() => navigate(`/executions/${ex.id}`)}
                       >
+                        {/* 展示序号：类似 TestRail #R123 */}
+                        <TableCell className="text-sm font-mono font-semibold text-muted-foreground tabular-nums">
+                          #{ex.display_number}
+                        </TableCell>
+
+                        {/* 执行名称 */}
                         <TableCell>
-                          <div>
-                            <p className="font-medium">{ex.name || t("executions.unnamed")}</p>
+                          <div className="flex items-center gap-2 min-w-0">
+                            <span className="font-medium truncate max-w-[240px]">
+                              {ex.name || t("executions.unnamed")}
+                            </span>
+                            {multiCase && (
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <span className="shrink-0 inline-flex items-center rounded-md bg-muted px-1.5 py-0.5 text-xs text-muted-foreground cursor-default">
+                                    +{caseCount - 1}
+                                  </span>
+                                </TooltipTrigger>
+                                <TooltipContent side="bottom" className="max-w-xs">
+                                  <ul className="list-disc pl-4 text-xs space-y-0.5">
+                                    {caseNames.map((n, i) => (
+                                      <li key={i}>{n}</li>
+                                    ))}
+                                  </ul>
+                                </TooltipContent>
+                              </Tooltip>
+                            )}
                             {isRunning && (
-                              <Progress value={progress} className="h-1.5 mt-1.5" />
+                              <Progress value={progress} className="h-1 flex-1 min-w-[40px] mt-0" />
                             )}
                           </div>
                         </TableCell>
+
+                        {/* 环境 */}
+                        <TableCell>
+                          <span
+                            className={`inline-flex items-center rounded-md border px-1.5 py-0.5 text-xs font-medium ${getEnvBadgeClass(ex.env)}`}
+                          >
+                            {ex.env.toUpperCase()}
+                          </span>
+                        </TableCell>
+
+                        {/* 状态 */}
                         <TableCell>
                           <StatusBadge variant={(
                             ["passed","failed","running","pending","cancelled","error"].includes(ex.status.toLowerCase())
@@ -209,58 +287,47 @@ export function ExecutionsPage() {
                               : "error"
                           ) as "passed" | "failed" | "running" | "pending" | "cancelled" | "error"} />
                         </TableCell>
+
+                        {/* 通过/失败 */}
                         <TableCell className="text-sm">
                           {summary ? (
-                            <div className="flex items-center gap-2">
-                              <span className="text-emerald-600 font-medium">
+                            <div className="flex items-center gap-1.5">
+                              <span className="tabular-nums text-emerald-600 font-medium">
                                 {summary.passed_cases}
                               </span>
                               <span className="text-muted-foreground">/</span>
-                              <span className="text-red-500 font-medium">
+                              <span className="tabular-nums text-red-500 font-medium">
                                 {summary.failed_cases}
-                              </span>
-                              <span className="text-muted-foreground text-xs ml-1">
-                                ({t("executions.totalCount", { count: summary.total_cases })})
                               </span>
                             </div>
                           ) : (
-                            "-"
+                            <span className="text-muted-foreground">-</span>
                           )}
                         </TableCell>
-                        <TableCell className="text-sm text-muted-foreground">
-                          {t(`executions:${ex.trigger}` as any) || ex.trigger}
+
+                        {/* 触发方式 */}
+                        <TableCell className="text-xs text-muted-foreground">
+                          {t(`executions.${ex.trigger}` as any) || ex.trigger}
                         </TableCell>
-                        <TableCell className="text-sm text-muted-foreground font-mono">
+
+                        {/* 开始时间 */}
+                        <TableCell className="text-xs text-muted-foreground tabular-nums">
                           {formatDate(ex.started_at)}
                         </TableCell>
-                        <TableCell className="text-sm text-muted-foreground font-mono">
-                          {formatDate(ex.finished_at)}
-                        </TableCell>
+
+                        {/* 操作 */}
                         <TableCell>
-                          <div className="flex gap-1">
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                navigate(`/executions/${ex.id}`);
-                              }}
-                            >
-                              <ExternalLink className="h-4 w-4" />
-                            </Button>
-                            {isRunning && (
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  // cancel execution
-                                }}
-                              >
-                                <X className="h-4 w-4 text-destructive" />
-                              </Button>
-                            )}
-                          </div>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-8 w-8"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              navigate(`/executions/${ex.id}`);
+                            }}
+                          >
+                            <ExternalLink className="h-4 w-4" />
+                          </Button>
                         </TableCell>
                       </TableRow>
                     );
@@ -373,6 +440,7 @@ export function ExecutionsPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </div>
+      </div>
+    </TooltipProvider>
   );
 }

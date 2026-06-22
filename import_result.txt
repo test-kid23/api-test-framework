@@ -1,0 +1,6 @@
+Traceback (most recent call last):
+  File "C:\private\aibuilder\api-test-framework\scripts\import_test_cases.py", line 258, in <module>
+    import_cases()
+  File "C:\private\aibuilder\api-test-framework\scripts\import_test_cases.py", line 194, in import_cases
+    print(f"\U0001f4c4 ��ȡ�� {len(cases)} ������\n")
+UnicodeEncodeError: 'gbk' codec can't encode character '\U0001f4c4' in position 0: illegal multibyte sequence

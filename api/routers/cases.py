@@ -67,6 +67,7 @@ def _orm_to_response(model: TestCaseModel) -> CaseResponse:
     """将 ORM 模型转换为 API 响应。"""
     return CaseResponse(
         id=str(model.id),
+        display_number=model.display_number,
         name=model.name,
         description=model.description or "",
         tags=_json_to_tags(model.tags),
@@ -83,6 +84,7 @@ def _orm_to_list_item(model: TestCaseModel) -> CaseListItem:
     """将 ORM 模型转换为列表项响应。"""
     return CaseListItem(
         id=str(model.id),
+        display_number=model.display_number,
         name=model.name,
         description=model.description or "",
         tags=_json_to_tags(model.tags),
@@ -92,6 +94,15 @@ def _orm_to_list_item(model: TestCaseModel) -> CaseListItem:
         created_at=model.created_at,
         updated_at=model.updated_at,
     )
+
+
+async def _next_display_number(session: AsyncSession) -> int:
+    """查询当前最大的 display_number 并返回 +1（线程安全近似）。"""
+    result = await session.execute(
+        select(func.coalesce(func.max(TestCaseModel.display_number), 0))
+    )
+    max_num = result.scalar() or 0
+    return max_num + 1
 
 
 def _not_found(case_id: str) -> HTTPException:
@@ -130,18 +141,20 @@ async def create_case(
 ):
     """创建新的测试用例，将 YAML 内容持久化到数据库中。"""
     repo = CaseRepository(session)
+    display_number = await _next_display_number(session)
     model = TestCaseModel(
         name=body.name,
         description=body.description,
         tags=_tags_to_json(body.tags),
         priority=body.priority,
         yaml_content=body.yaml_content,
+        display_number=display_number,
+        suite_name=body.suite_name,
     )
     # 绑定到用户的第一个项目（如有关联）
     if current_user.primary_project_id:
         model.project_id = uuid.UUID(current_user.primary_project_id)
     created = await repo.create(model)
-    await session.commit()
     return SuccessResponse(data=_orm_to_response(created))
 
 
@@ -298,13 +311,16 @@ async def update_case(
         model.priority = body.priority
     if body.yaml_content is not None:
         model.yaml_content = body.yaml_content
+    if body.suite_name is not None:
+        model.suite_name = body.suite_name
     # timeout 字段在 ORM 中不存在，忽略
 
     # 版本号递增
     model.version += 1
+    # 显式设置 updated_at 避免 onupdate=func.now() 在 flush 后触发属性过期
+    model.updated_at = datetime.now(timezone.utc)
 
     await repo.update(model)
-    await session.commit()
 
     return SuccessResponse(data=_orm_to_response(model))
 
@@ -343,7 +359,6 @@ async def delete_case(
     if not deleted:
         raise _not_found(case_id)
 
-    await session.commit()
     return MessageResponse(message=f"用例 {case_id} 已删除")
 
 
@@ -439,6 +454,9 @@ async def import_cases(
 
     project_id = uuid.UUID(current_user.primary_project_id) if current_user.primary_project_id else None
 
+    # 获取当前最大 display_number 作为起点
+    next_num = await _next_display_number(session)
+
     for case in suite.cases:
         try:
             yaml_content = testcase_to_yaml_content(case)
@@ -450,13 +468,13 @@ async def import_cases(
                 yaml_content=yaml_content,
                 suite_name=suite.name,
                 project_id=project_id,
+                display_number=next_num,
             )
+            next_num += 1
             created = await repo.create(model)
             imported_ids.append(str(created.id))
         except Exception as e:
             errors.append(f"[{case.name}] {str(e)}")
-
-    await session.commit()
 
     result = CaseImportResult(
         total_discovered=len(suite.cases),

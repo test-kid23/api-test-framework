@@ -98,6 +98,10 @@ def create_async_engine(
 
     Returns:
         SQLAlchemy AsyncEngine 实例。
+
+    Note:
+        SQLite WAL 模式设置已移至 api 层 lifespan 中，确保在正确的
+        asyncio 事件循环中执行，避免 MissingGreenlet 错误。
     """
     url = get_db_url(db_config)
     logger.info(f"创建数据库引擎: driver={db_config.get('driver', 'auto')}")
@@ -116,54 +120,29 @@ def create_async_engine(
         engine_kwargs["pool_size"] = db_config.get("pool_size", 5)
         engine_kwargs["max_overflow"] = db_config.get("max_overflow", 10)
 
-    engine = _create_async_engine(url, **engine_kwargs)
-
-    # SQLite: 启用 WAL 模式以支持并发读写（读不阻塞写，写不阻塞读）
-    if "aiosqlite" in url:
-        _enable_sqlite_wal(engine)
-
-    return engine
+    return _create_async_engine(url, **engine_kwargs)
 
 
-def _enable_sqlite_wal(engine: AsyncEngine) -> None:
-    """为 SQLite 启用 WAL 模式，提升并发性能。
+async def enable_sqlite_wal_async(engine: AsyncEngine) -> None:
+    """为 SQLite 启用 WAL 模式（异步版本，在正确的事件循环中执行）。
 
     WAL (Write-Ahead Logging) 模式下：
     - 读操作不会阻塞写操作
     - 写操作不会阻塞读操作
     - 并发性能显著提升
 
+    必须在 FastAPI 的 lifespan 或路由处理函数等已运行的事件循环中调用。
+    不要在 create_async_engine() 的同步上下文中调用，否则会因事件循环不匹配
+    导致 MissingGreenlet 错误。
+
     Args:
         engine: SQLAlchemy AsyncEngine（SQLite 驱动）。
     """
-    import asyncio
-
-    async def _set_wal() -> None:
-        async with engine.connect() as conn:
-            await conn.exec_driver_sql("PRAGMA journal_mode=WAL")
-            await conn.exec_driver_sql("PRAGMA synchronous=NORMAL")
-            await conn.commit()
-        logger.info("sqlite_wal_enabled")
-
-    try:
-        # 在事件循环中执行（如果当前没有运行中的事件循环，用 asyncio.run）
-        loop = asyncio.get_event_loop()
-        if loop.is_running():
-            # 在已有事件循环中，创建新 task 执行
-            import threading
-
-            def _run_in_thread() -> None:
-                new_loop = asyncio.new_event_loop()
-                new_loop.run_until_complete(_set_wal())
-                new_loop.close()
-
-            t = threading.Thread(target=_run_in_thread, daemon=True)
-            t.start()
-            t.join(timeout=5)
-        else:
-            loop.run_until_complete(_set_wal())
-    except RuntimeError:
-        asyncio.run(_set_wal())
+    async with engine.connect() as conn:
+        await conn.exec_driver_sql("PRAGMA journal_mode=WAL")
+        await conn.exec_driver_sql("PRAGMA synchronous=NORMAL")
+        await conn.commit()
+    logger.info("sqlite_wal_enabled")
 
 
 def create_async_session_factory(

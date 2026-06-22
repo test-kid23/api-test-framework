@@ -101,7 +101,7 @@ async def _execute_cases_async(
     session: AsyncSession | None = None
     try:
         exec_uuid = uuid.UUID(exec_id)
-        runner = create_runner(env_name)
+        runner = await create_runner(env_name)
 
         session = create_independent_session()
         exec_repo = ExecutionRepository(session)

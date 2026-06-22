@@ -302,7 +302,7 @@ export function EnvironmentsPage() {
                 />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="env-ws">WebSocket URL</Label>
+                <Label htmlFor="env-ws">WebSocket 地址</Label>
                 <Input
                   id="env-ws"
                   value={formData.ws_url}

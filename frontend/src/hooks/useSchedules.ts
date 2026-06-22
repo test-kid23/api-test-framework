@@ -22,7 +22,7 @@ export function useCreateSchedule() {
   return useMutation({
     mutationFn: (payload: ScheduleCreate) => schedulesApi.create(payload),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["schedules"] });
+      queryClient.invalidateQueries({ queryKey: ["schedules"], exact: false });
     },
   });
 }
@@ -38,7 +38,7 @@ export function useUpdateSchedule() {
       payload: ScheduleUpdate;
     }) => schedulesApi.update(id, payload),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["schedules"] });
+      queryClient.invalidateQueries({ queryKey: ["schedules"], exact: false });
     },
   });
 }
@@ -48,7 +48,7 @@ export function useDeleteSchedule() {
   return useMutation({
     mutationFn: (id: string) => schedulesApi.delete(id),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["schedules"] });
+      queryClient.invalidateQueries({ queryKey: ["schedules"], exact: false });
     },
   });
 }
@@ -58,8 +58,8 @@ export function useRunSchedule() {
   return useMutation({
     mutationFn: (id: string) => schedulesApi.runNow(id),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["schedules"] });
-      queryClient.invalidateQueries({ queryKey: ["executions"] });
+      queryClient.invalidateQueries({ queryKey: ["schedules"], exact: false });
+      queryClient.invalidateQueries({ queryKey: ["executions"], exact: false });
     },
   });
 }

@@ -56,7 +56,7 @@ export function StatusBadge({
     // 优先级标签不需要翻译
     if (["P0", "P1", "P2", "P3"].includes(variant)) return variant;
     // 通过 i18n 获取状态标签
-    const key = `status:${variant}`;
+    const key = `status.${variant}`;
     const translated = t(key);
     return translated !== key ? translated : variant;
   };

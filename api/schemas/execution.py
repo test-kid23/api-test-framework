@@ -38,15 +38,14 @@ class ExecutionRequest(BaseModel):
     """触发执行请求"""
 
     case_ids: list[str] = Field(
-        ...,
-        min_length=1,
-        description="要执行的用例 ID 列表",
+        default_factory=list,
+        description="要执行的用例 ID 列表（可为空，此时从 suite_id 查询）",
     )
     suite_id: Optional[str] = Field(default=None, description="套件 ID（可选）")
     env: str = Field(default="dev", description="目标环境名称")
     trigger: ExecutionTrigger = Field(
-        default=ExecutionTrigger.API,
-        description="触发方式",
+        default=ExecutionTrigger.MANUAL,
+        description="触发方式: manual / scheduled / webhook / api",
     )
 
 
@@ -66,6 +65,7 @@ class ExecutionCaseResult(BaseModel):
 class ExecutionResponse(TimestampMixin):
     """执行响应"""
 
+    display_number: int = Field(default=0, description="人类可读的展示序号（自增）")
     name: str = Field(default="", description="执行名称")
     status: ExecutionStatus = Field(
         default=ExecutionStatus.PENDING,
@@ -81,6 +81,7 @@ class ExecutionResponse(TimestampMixin):
         default=None, description="Celery 任务 ID（分布式模式专用）"
     )
     case_ids: list[str] = Field(default_factory=list, description="包含的用例 ID 列表")
+    case_names: list[str] = Field(default_factory=list, description="包含的用例名称列表（与 case_ids 一一对应）")
     suite_id: Optional[str] = Field(default=None, description="关联套件 ID")
     results: list[ExecutionCaseResult] = Field(
         default_factory=list,

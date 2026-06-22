@@ -24,7 +24,7 @@ class TemplateEngine:
 
     def __init__(self) -> None:
         self._env = jinja2.Environment(
-            undefined=jinja2.Undefined,
+            undefined=jinja2.StrictUndefined,
             keep_trailing_newline=True,
         )
         self._env.globals.update(
@@ -48,17 +48,18 @@ class TemplateEngine:
     # ---------- 公共 API ----------
 
     def render(self, template_str: str, variables: dict[str, Any]) -> str:
-        """替换字符串中的所有 {{变量}}"""
+        """替换字符串中的所有 {{变量}}
+
+        Raises:
+            jinja2.UndefinedError: 当模板引用了未定义的变量时。
+        """
         if not isinstance(template_str, str):
             return str(template_str)
         if "{{" not in template_str:
             return template_str
-        try:
-            tpl = self._env.from_string(template_str)
-            result: str = tpl.render(**variables)
-            return result
-        except jinja2.TemplateError:
-            return template_str
+        tpl = self._env.from_string(template_str)
+        result: str = tpl.render(**variables)
+        return result
 
     def render_dict(self, data: dict[str, Any], variables: dict[str, Any]) -> dict[str, Any]:
         """递归替换字典中所有字符串值"""

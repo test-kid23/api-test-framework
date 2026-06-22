@@ -22,7 +22,7 @@ export function useCreateSuite() {
   return useMutation({
     mutationFn: (payload: SuiteCreate) => suitesApi.create(payload),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["suites"] });
+      queryClient.invalidateQueries({ queryKey: ["suites"], exact: false });
     },
   });
 }
@@ -33,7 +33,7 @@ export function useUpdateSuite() {
     mutationFn: ({ id, payload }: { id: string; payload: SuiteUpdate }) =>
       suitesApi.update(id, payload),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["suites"] });
+      queryClient.invalidateQueries({ queryKey: ["suites"], exact: false });
     },
   });
 }
@@ -43,7 +43,7 @@ export function useDeleteSuite() {
   return useMutation({
     mutationFn: (id: string) => suitesApi.delete(id),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["suites"] });
+      queryClient.invalidateQueries({ queryKey: ["suites"], exact: false });
     },
   });
 }

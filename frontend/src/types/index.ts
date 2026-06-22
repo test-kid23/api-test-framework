@@ -23,6 +23,7 @@ export type CasePriority = "P0" | "P1" | "P2" | "P3";
 
 export interface TestCase {
   id: string;
+  display_number: number;
   name: string;
   description: string;
   tags: string[];
@@ -36,6 +37,7 @@ export interface TestCase {
 
 export interface TestCaseListItem {
   id: string;
+  display_number: number;
   name: string;
   description: string;
   tags: string[];
@@ -107,6 +109,7 @@ export interface CaseResult {
 
 export interface Execution {
   id: string;
+  display_number: number;
   name: string;
   status: ExecutionStatus;
   trigger: ExecutionTrigger;
@@ -114,6 +117,7 @@ export interface Execution {
   mode: string;
   celery_task_id: string | null;
   case_ids: string[];
+  case_names: string[];
   suite_id: string | null;
   results: CaseResult[];
   summary: ExecutionSummary;
