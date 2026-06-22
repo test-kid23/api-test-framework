@@ -160,6 +160,16 @@ markers = [
     "data_driven: 数据驱动测试",
     "crud: 增删改查",
     "local: 本地接口测试",
+    "user: 用户相关测试",
+    "validation: 参数校验测试",
+    "negative: 负面测试",
+    "sim-api: 仿真接口测试服务",
+    "full-suite: 完整测试套件",
+    "response: 响应验证",
+    "structure: 结构验证",
+    "login-fail: 登录失败场景",
+    "no-auth: 无认证访问",
+    "invalid-token: 无效 Token",
 ]
 log_cli = true
 log_cli_level = "INFO"

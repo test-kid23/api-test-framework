@@ -18,6 +18,15 @@ const triggerLabels: Record<string, string> = {
   manual: "手动", scheduled: "定时", webhook: "Webhook", api: "API",
 };
 
+/** 将毫秒值格式化为人类可读的耗时文本 */
+const formatElapsed = (ms: number): string => {
+  if (!ms || ms <= 0) return "-";
+  if (ms < 1) return "<1ms";
+  const rounded = Math.round(ms);
+  if (rounded < 1000) return `${rounded}ms`;
+  return `${(ms / 1000).toFixed(2)}s`;
+};
+
 export function ExecutionDetailPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
@@ -60,11 +69,12 @@ export function ExecutionDetailPage() {
     .filter((v: number) => v > 0);
   const avgElapsed =
     elapsedVals.length > 0
-      ? (elapsedVals.reduce((a: number, b: number) => a + b, 0) / elapsedVals.length).toFixed(0)
-      : "-";
+      ? elapsedVals.reduce((a: number, b: number) => a + b, 0) / elapsedVals.length
+      : 0;
   const sorted = [...elapsedVals].sort((a, b) => a - b);
-  const p50 = sorted.length > 0 ? sorted[Math.floor(sorted.length * 0.5)] : "-";
-  const p95 = sorted.length > 0 ? sorted[Math.floor(sorted.length * 0.95)] : "-";
+  const p50 = sorted.length > 0 ? sorted[Math.floor(sorted.length * 0.5)] : 0;
+  const p95 = sorted.length > 0 ? sorted[Math.floor(sorted.length * 0.95)] : 0;
+  const maxVal = sorted.length > 0 ? sorted[sorted.length - 1] : 0;
 
   const formatDate = (d: string | null) => {
     if (!d) return "-";
@@ -216,7 +226,7 @@ export function ExecutionDetailPage() {
                         </Badge>
                         <span className="font-medium text-sm">{r.case_name}</span>
                         <span className="text-xs text-muted-foreground ml-auto">
-                          {r.elapsed_ms > 0 ? `${r.elapsed_ms}ms` : "-"}
+                          {formatElapsed(r.elapsed_ms)}
                         </span>
                       </div>
                     </AccordionTrigger>
@@ -228,7 +238,7 @@ export function ExecutionDetailPage() {
                         </div>
                         <div className="flex items-center justify-between">
                           <span className="text-muted-foreground">耗时:</span>
-                          <span>{r.elapsed_ms > 0 ? `${r.elapsed_ms}ms` : "-"}</span>
+                          <span>{formatElapsed(r.elapsed_ms)}</span>
                         </div>
                         {r.error && (
                           <div>
@@ -260,21 +270,19 @@ export function ExecutionDetailPage() {
         <CardContent>
           <div className="grid grid-cols-4 gap-6 text-center">
             <div>
-              <p className="text-2xl font-bold">{avgElapsed}ms</p>
+              <p className="text-2xl font-bold">{formatElapsed(avgElapsed)}</p>
               <p className="text-xs text-muted-foreground">平均</p>
             </div>
             <div>
-              <p className="text-2xl font-bold">{p50}ms</p>
+              <p className="text-2xl font-bold">{formatElapsed(p50)}</p>
               <p className="text-xs text-muted-foreground">P50</p>
             </div>
             <div>
-              <p className="text-2xl font-bold">{p95}ms</p>
+              <p className="text-2xl font-bold">{formatElapsed(p95)}</p>
               <p className="text-xs text-muted-foreground">P95</p>
             </div>
             <div>
-              <p className="text-2xl font-bold">
-                {sorted.length > 0 ? sorted[sorted.length - 1] : "-"}ms
-              </p>
+              <p className="text-2xl font-bold">{formatElapsed(maxVal)}</p>
               <p className="text-xs text-muted-foreground">最大值</p>
             </div>
           </div>

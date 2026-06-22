@@ -95,6 +95,16 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 
     deps._init_db()
 
+    # ── SQLite WAL 模式设置（必须在当前事件循环中执行） ──
+    if deps._engine is not None:
+        engine_url = str(deps._engine.url)
+        if "aiosqlite" in engine_url:
+            try:
+                from framework.persistence.database import enable_sqlite_wal_async
+                await enable_sqlite_wal_async(deps._engine)
+            except Exception as e:
+                _log.warning("sqlite_wal_setup_failed", error=str(e))
+
     # ── 首次启动初始化（建表 + 默认管理员） ──
     if deps._engine is not None:
         try:

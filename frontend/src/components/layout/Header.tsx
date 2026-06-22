@@ -1,12 +1,12 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { useAppStore } from "@/store/appStore";
 import { useAuthStore } from "@/store/authStore";
 import { usePermission } from "@/hooks/usePermission";
+import { useEnvironments } from "@/hooks/useEnvironments";
 import { ChangePasswordDialog } from "@/components/auth/ChangePasswordDialog";
-import { LanguageSwitcher } from "@/components/LanguageSwitcher";
-import { Menu, Search, ChevronDown, Settings, Sun, Moon, Monitor, LogOut, Key } from "lucide-react";
+import { Menu, Search, ChevronDown, Settings, Sun, Moon, Monitor, LogOut, Key, Check } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import {
@@ -46,6 +46,7 @@ export function Header() {
   const toggleSidebar = useAppStore((s) => s.toggleSidebar);
   const toggleMobileSidebar = useAppStore((s) => s.toggleMobileSidebar);
   const selectedEnv = useAppStore((s) => s.selectedEnv);
+  const setSelectedEnv = useAppStore((s) => s.setSelectedEnv);
   const theme = useAppStore((s) => s.theme);
   const setTheme = useAppStore((s) => s.setTheme);
   const user = useAuthStore((s) => s.user);
@@ -54,6 +55,22 @@ export function Header() {
   const navigate = useNavigate();
   const [cmdOpen, setCmdOpen] = useState(false);
   const [pwdDialogOpen, setPwdDialogOpen] = useState(false);
+
+  const { data: envsData } = useEnvironments({ page_size: 50 });
+  const envs = envsData?.items || [];
+
+  // 环境列表加载后，若当前选中环境不在列表中，自动选中第一个
+  useEffect(() => {
+    if (envs.length > 0 && !envs.some((e) => e.name === selectedEnv)) {
+      setSelectedEnv(envs[0].name);
+    }
+    // envsData 引用稳定，仅在数据变更时触发
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [envsData, selectedEnv, setSelectedEnv]);
+
+  const handleEnvChange = (envName: string) => {
+    setSelectedEnv(envName);
+  };
 
   const cycleTheme = () => {
     const next: Record<"light" | "dark" | "system", "light" | "dark" | "system"> = {
@@ -132,29 +149,54 @@ export function Header() {
         </div>
 
         <div className="flex items-center gap-3">
-          {/* Language Switcher — 暂时禁用，等 i18n 完整翻译后再启用 */}
-          {/* <LanguageSwitcher /> */}
+          {/* Language Switcher - 英文已关闭，暂时隐藏 */}
 
           {/* Theme toggle */}
           <Button
             variant="ghost"
             size="icon"
             onClick={cycleTheme}
-            title={`${theme === "light" ? "Light" : theme === "dark" ? "Dark" : "System"}`}
+            title={`${theme === "light" ? "浅色" : theme === "dark" ? "深色" : "跟随系统"}`}
           >
             <ThemeIcon className="h-4 w-4" />
           </Button>
 
           {/* Environment Switcher */}
-          <Button
-            variant="ghost"
-            size="sm"
-            className="hidden sm:flex items-center gap-1.5 text-xs text-muted-foreground"
-          >
-            <span className="inline-flex h-2 w-2 rounded-full bg-emerald-500" />
-            <span className="font-medium text-foreground">{selectedEnv}</span>
-            <ChevronDown className="h-3 w-3" />
-          </Button>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="hidden sm:flex items-center gap-1.5 text-xs text-muted-foreground"
+              >
+                <span className="inline-flex h-2 w-2 rounded-full bg-emerald-500" />
+                <span className="font-medium text-foreground">{selectedEnv}</span>
+                <ChevronDown className="h-3 w-3" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-48">
+              <DropdownMenuLabel>{t("executions.targetEnv")}</DropdownMenuLabel>
+              <DropdownMenuSeparator />
+              {envs.length === 0 ? (
+                <DropdownMenuItem disabled>
+                  {t("common.noData")}
+                </DropdownMenuItem>
+              ) : (
+                envs.map((env) => (
+                  <DropdownMenuItem
+                    key={env.id}
+                    onClick={() => handleEnvChange(env.name)}
+                    className="flex items-center justify-between"
+                  >
+                    <span>{env.name}</span>
+                    {selectedEnv === env.name && (
+                      <Check className="h-4 w-4 text-primary" />
+                    )}
+                  </DropdownMenuItem>
+                ))
+              )}
+            </DropdownMenuContent>
+          </DropdownMenu>
 
           {/* User Menu */}
           <DropdownMenu>
@@ -203,7 +245,7 @@ export function Header() {
       <CommandDialog open={cmdOpen} onOpenChange={setCmdOpen}>
         <CommandInput placeholder={t("sidebar.searchPages")} />
         <CommandList>
-          <CommandEmpty>{t("common:noData")}</CommandEmpty>
+          <CommandEmpty>{t("common.noData")}</CommandEmpty>
           <CommandGroup heading={t("sidebar.systemSettings")}>
             {quickLinks.map((link) => (
               <CommandItem

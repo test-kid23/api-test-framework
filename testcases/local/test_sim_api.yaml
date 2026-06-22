@@ -1,0 +1,439 @@
+# ============================================================
+# 仿真接口测试服务 — 完整接口测试用例
+# 目标服务: http://127.0.0.1:8011 (OpenAPI title: 仿真接口测试服务)
+# 运行命令: python -m pytest testcases/local/test_sim_api.yaml --env local
+# ============================================================
+name: 仿真接口测试服务 - 完整测试套件
+description: |
+  覆盖 http://127.0.0.1:8011 的 5 个接口:
+  - POST /api/login    登录获取 JWT Token
+  - GET /api/user       查询用户
+  - POST /api/user      新增用户
+  - PUT /api/user       更新用户
+  - DELETE /api/user    删除用户
+  包含: 正常流程、认证鉴权、参数校验、异常场景
+base_url: "{{env.base_url}}"
+tags: [local, sim-api, crud, auth, full-suite]
+
+variables:
+  test_name: "autotest_user_sim"
+  test_age: 28
+
+# ============================================================
+# Suite Setup: 自动登录获取 Token（缓存 5 分钟）
+# 单独执行任意用例时，编排器自动执行此 setup
+# ============================================================
+setup:
+  - api_call:
+      method: POST
+      path: /api/login
+      headers:
+        Content-Type: "application/json"
+      body:
+        username: "{{env.admin_user}}"
+        password: "{{env.admin_pass}}"
+      extract:
+        access_token: $.data.access_token
+
+# ============================================================
+# 用例定义（23 个用例，按场景分组）
+# ============================================================
+cases:
+  # ─────────────────────────────────────────────
+  # 第一部分: 登录接口测试（4 个用例 - 登录正常流程已移至 setup）
+  # ─────────────────────────────────────────────
+
+  - name: "[Login] 登录失败 - 错误密码"
+    description: 使用错误密码登录，API 返回 400 表示凭据无效
+    tags: [login, auth, negative, P1]
+    priority: P1
+    request:
+      method: POST
+      path: /api/login
+      headers:
+        Content-Type: application/json
+      body:
+        username: "{{env.admin_user}}"
+        password: "wrong_password_123"
+    expect:
+      status_code: 400
+
+  - name: "[Login] 登录失败 - 不存在的用户"
+    description: 使用不存在的用户名登录，API 返回 400
+    tags: [login, auth, negative, P1]
+    priority: P1
+    request:
+      method: POST
+      path: /api/login
+      headers:
+        Content-Type: application/json
+      body:
+        username: "nonexistent_user"
+        password: "some_password"
+    expect:
+      status_code: 400
+
+  - name: "[Login] 登录失败 - 空请求体"
+    description: 发送空 JSON 体，应返回 422 验证错误
+    tags: [login, validation, negative, P1]
+    priority: P1
+    request:
+      method: POST
+      path: /api/login
+      headers:
+        Content-Type: application/json
+      body: {}
+    expect:
+      status_code: 422
+
+  - name: "[Login] 登录失败 - 缺少 password 字段"
+    description: 请求体缺少必填字段 password
+    tags: [login, validation, negative, P1]
+    priority: P1
+    request:
+      method: POST
+      path: /api/login
+      headers:
+        Content-Type: application/json
+      body:
+        username: "admin"
+    expect:
+      status_code: 422
+
+  - name: "[Response] POST /api/login - 验证响应体结构"
+    description: 验证登录接口返回的 token 数据包含正确格式
+    tags: [response, structure, P1]
+    priority: P1
+    request:
+      method: POST
+      path: /api/login
+      headers:
+        Content-Type: application/json
+      body:
+        username: "{{env.admin_user}}"
+        password: "{{env.admin_pass}}"
+    expect:
+      status_code: 200
+      jsonpath:
+        $.code:
+          operator: eq
+          value: 200
+        $.data.access_token:
+          operator: matches
+          value: "^eyJ[A-Za-z0-9_-]+\\.[A-Za-z0-9_-]+\\.[A-Za-z0-9_-]+$"
+        $.data.token_type: "Bearer"
+
+  # ─────────────────────────────────────────────
+  # 第二部分: 用户 CRUD 正常流程（6 个用例）
+  # ─────────────────────────────────────────────
+
+  - name: "[User] GET - 查询默认用户(无参数)"
+    description: 不带 user_id 参数，查询默认用户信息
+    tags: [user, get, crud, P0]
+    priority: P0
+    request:
+      method: GET
+      path: /api/user
+      headers:
+        Authorization: "Bearer {{access_token}}"
+    expect:
+      status_code: 200
+      jsonpath:
+        $.code:
+          operator: eq
+          value: 200
+        $.msg:
+          operator: matches
+          value: ".+"
+
+  - name: "[User] GET - 查询指定用户(user_id=1)"
+    description: 通过 user_id 参数查询指定用户
+    tags: [user, get, crud, P0]
+    priority: P0
+    request:
+      method: GET
+      path: /api/user
+      headers:
+        Authorization: "Bearer {{access_token}}"
+      params:
+        user_id: 1
+    expect:
+      status_code: 200
+      jsonpath:
+        $.code:
+          operator: eq
+          value: 200
+
+  - name: "[User] POST - 创建新用户"
+    description: 通过 POST 接口创建一个新的测试用户
+    tags: [user, post, crud, P0]
+    priority: P0
+    request:
+      method: POST
+      path: /api/user
+      headers:
+        Content-Type: application/json
+        Authorization: "Bearer {{access_token}}"
+      body:
+        name: "{{test_name}}"
+        age: "{{test_age}}"
+    expect:
+      status_code: 200
+      jsonpath:
+        $.code:
+          operator: eq
+          value: 200
+        $.msg: "POST创建成功"
+        $.data.id:
+          operator: gte
+          value: 1
+        $.data.name: "{{test_name}}"
+        $.data.age: "{{test_age}}"
+    extract:
+      created_user_id: $.data.id
+
+  - name: "[User] GET - 查询刚创建的用户"
+    description: 使用上一步提取的 created_user_id 查询新用户
+    tags: [user, get, crud, P0]
+    priority: P0
+    request:
+      method: GET
+      path: /api/user
+      headers:
+        Authorization: "Bearer {{access_token}}"
+      params:
+        user_id: "{{created_user_id}}"
+    expect:
+      status_code: 200
+      jsonpath:
+        $.code:
+          operator: eq
+          value: 200
+        $.data.id: "{{created_user_id}}"
+        $.data.name: "{{test_name}}"
+
+  - name: "[Response] GET /api/user - 验证响应体结构"
+    description: 验证 GET 接口响应体包含正确的字段和类型（在删除前执行）
+    tags: [response, structure, P1]
+    priority: P1
+    request:
+      method: GET
+      path: /api/user
+      headers:
+        Authorization: "Bearer {{access_token}}"
+      params:
+        user_id: "{{created_user_id}}"
+    expect:
+      status_code: 200
+      jsonpath:
+        $.code:
+          operator: type
+          value: "int"
+        $.msg:
+          operator: matches
+          value: ".+"
+        $.data.id:
+          operator: eq
+          value: "{{created_user_id}}"
+        $.data.name:
+          operator: matches
+          value: ".+"
+
+  - name: "[User] PUT - 更新用户名"
+    description: 更新刚创建的用户的名称
+    tags: [user, put, crud, P0]
+    priority: P0
+    variables:
+      updated_name: "autotest_updated_name"
+    request:
+      method: PUT
+      path: /api/user
+      headers:
+        Content-Type: application/json
+        Authorization: "Bearer {{access_token}}"
+      body:
+        name: "{{updated_name}}"
+    expect:
+      status_code: 200
+      jsonpath:
+        $.code:
+          operator: eq
+          value: 200
+        $.msg: "PUT更新成功"
+        $.data.name: "{{updated_name}}"
+
+  - name: "[User] DELETE - 删除刚创建的用户"
+    description: 删除测试过程中创建的用户，清理测试数据
+    tags: [user, delete, crud, P0]
+    priority: P0
+    request:
+      method: DELETE
+      path: /api/user
+      headers:
+        Authorization: "Bearer {{access_token}}"
+      params:
+        user_id: "{{created_user_id}}"
+    expect:
+      status_code: 200
+      jsonpath:
+        $.code:
+          operator: eq
+          value: 200
+        $.msg: "DELETE删除成功"
+
+  # ─────────────────────────────────────────────
+  # 第三部分: 认证鉴权测试（6 个用例）
+  # ─────────────────────────────────────────────
+
+  - name: "[Auth] GET /api/user - 无 Token 应返回 401"
+    description: 不带 Authorization 头访问业务接口，应拒绝访问
+    tags: [auth, security, P0]
+    priority: P0
+    request:
+      method: GET
+      path: /api/user
+    expect:
+      status_code: 401
+      jsonpath:
+        $.detail:
+          operator: matches
+          value: "Not authenticated"
+
+  - name: "[Auth] POST /api/user - 无 Token 应返回 401"
+    description: 无 Token 尝试创建用户
+    tags: [auth, security, P1]
+    priority: P1
+    request:
+      method: POST
+      path: /api/user
+      headers:
+        Content-Type: application/json
+      body:
+        name: "hacker_user"
+        age: 99
+    expect:
+      status_code: 401
+      jsonpath:
+        $.detail:
+          operator: matches
+          value: "Not authenticated"
+
+  - name: "[Auth] PUT /api/user - 无 Token 应返回 401"
+    description: 无 Token 尝试更新用户
+    tags: [auth, security, P1]
+    priority: P1
+    request:
+      method: PUT
+      path: /api/user
+      headers:
+        Content-Type: application/json
+      body:
+        name: "hacked_name"
+    expect:
+      status_code: 401
+      jsonpath:
+        $.detail:
+          operator: matches
+          value: "Not authenticated"
+
+  - name: "[Auth] DELETE /api/user - 无 Token 应返回 401"
+    description: 无 Token 尝试删除用户
+    tags: [auth, security, P1]
+    priority: P1
+    request:
+      method: DELETE
+      path: /api/user
+      params:
+        user_id: 1
+    expect:
+      status_code: 401
+      jsonpath:
+        $.detail:
+          operator: matches
+          value: "Not authenticated"
+
+  - name: "[Auth] GET /api/user - 无效 Token 应返回 401"
+    description: 使用伪造的 JWT Token 访问接口
+    tags: [auth, security, P1]
+    priority: P1
+    request:
+      method: GET
+      path: /api/user
+      headers:
+        Authorization: "Bearer invalid.token.here.fake_jwt_xxxxx"
+    expect:
+      status_code: 401
+
+  - name: "[Auth] GET /api/user - 非 Bearer Token 应返回 401"
+    description: Authorization 头使用非 Bearer 格式
+    tags: [auth, security, P2]
+    priority: P2
+    request:
+      method: GET
+      path: /api/user
+      headers:
+        Authorization: "Basic YWRtaW46MTIzNDU2"
+    expect:
+      status_code: 401
+
+  # ─────────────────────────────────────────────
+  # 第四部分: 参数校验与边界测试（4 个用例）
+  # ─────────────────────────────────────────────
+
+  - name: "[Validation] POST /api/user - 缺少必填字段 name"
+    description: 请求体缺少 name 字段，应返回 422
+    tags: [validation, negative, P1]
+    priority: P1
+    request:
+      method: POST
+      path: /api/user
+      headers:
+        Content-Type: application/json
+        Authorization: "Bearer {{access_token}}"
+      body:
+        age: 30
+    expect:
+      status_code: 422
+
+  - name: "[Validation] POST /api/user - 缺少必填字段 age"
+    description: 请求体缺少 age 字段，应返回 422
+    tags: [validation, negative, P1]
+    priority: P1
+    request:
+      method: POST
+      path: /api/user
+      headers:
+        Content-Type: application/json
+        Authorization: "Bearer {{access_token}}"
+      body:
+        name: "test_user_no_age"
+    expect:
+      status_code: 422
+
+  - name: "[Validation] POST /api/user - 空请求体"
+    description: 发送空 JSON 体到创建用户接口
+    tags: [validation, negative, P2]
+    priority: P2
+    request:
+      method: POST
+      path: /api/user
+      headers:
+        Content-Type: application/json
+        Authorization: "Bearer {{access_token}}"
+      body: {}
+    expect:
+      status_code: 422
+
+  - name: "[Validation] POST /api/user - 非 JSON 请求体"
+    description: 发送非 JSON 格式的请求体
+    tags: [validation, negative, P2]
+    priority: P2
+    request:
+      method: POST
+      path: /api/user
+      headers:
+        Content-Type: text/plain
+        Authorization: "Bearer {{access_token}}"
+      body: "this is not json"
+    expect:
+      status_code: 422

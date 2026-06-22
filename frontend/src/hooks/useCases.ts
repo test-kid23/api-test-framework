@@ -22,7 +22,7 @@ export function useCreateCase() {
   return useMutation({
     mutationFn: (payload: TestCaseCreate) => casesApi.create(payload),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["cases"] });
+      queryClient.invalidateQueries({ queryKey: ["cases"], exact: false });
     },
   });
 }
@@ -33,7 +33,7 @@ export function useUpdateCase() {
     mutationFn: ({ id, payload }: { id: string; payload: TestCaseUpdate }) =>
       casesApi.update(id, payload),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["cases"] });
+      queryClient.invalidateQueries({ queryKey: ["cases"], exact: false });
     },
   });
 }
@@ -43,7 +43,7 @@ export function useDeleteCase() {
   return useMutation({
     mutationFn: (id: string) => casesApi.delete(id),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["cases"] });
+      queryClient.invalidateQueries({ queryKey: ["cases"], exact: false });
     },
   });
 }

@@ -89,6 +89,7 @@
     "priority": "Priority",
     "status": "Status",
     "noCases": "No cases found",
+    "number": "No.",
     "confirmDelete": "Confirm Delete",
     "deleteWarning": "This action cannot be undone. Are you sure you want to delete this case?",
     "batchDelete": "Batch Delete"
@@ -111,6 +112,9 @@
     "pending": "Pending",
     "no": "No.",
     "execName": "Execution Name",
+    "idCol": "ID",
+    "caseId": "Case ID",
+    "envLabel": "Env",
     "statusLabel": "Status",
     "passFail": "Passed/Failed",
     "trigger": "Trigger",
@@ -139,7 +143,10 @@
     "scheduled": "Scheduled",
     "webhook": "Webhook",
     "api": "API",
-    "totalCount": "{{count}} total"
+    "totalCount": "{{count}} total",
+    "multiCases": "+{{count}}",
+    "copied": "Copied",
+    "clickToCopy": "Click to copy full ID"
   },
   "common": {
     "loading": "Loading...",
@@ -179,6 +186,17 @@
     "switch": "Language",
     "zhCN": "中文",
     "enUS": "English"
+  },
+  "variableDeps": {
+    "dialogTitle": "Missing Variable Dependencies",
+    "dialogDesc": "The following cases reference variables extracted by other cases, but no selected case provides them. These cases will fail if run alone.",
+    "caseLabel": "Case",
+    "missingVars": "Missing Variables",
+    "sourceMissing": "Provider missing",
+    "suggestion": "Consider selecting the cases that provide these variables (e.g., login cases) together with these cases, or run the provider cases first to initialize the context.",
+    "cancelRun": "Cancel",
+    "continueAnyway": "Run Anyway",
+    "varProvidedBy": "Variable {{var}} is provided by {{case}}"
   },
   "suites": {
     "title": "Suites",

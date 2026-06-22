@@ -15,6 +15,7 @@ T5-18 项目级 API 隔离：
 
 from __future__ import annotations
 
+import asyncio
 import os
 import threading
 import uuid as _uuid
@@ -430,31 +431,8 @@ def create_independent_session() -> AsyncSession:
 # ==================== Runner 工厂（T2-7 异步执行支持） ====================
 
 _runner_cache: dict[str, TestRunner] = {}
-_runner_cache_lock = threading.Lock()
+_runner_cache_lock = asyncio.Lock()
 _log = Logger.get("api.dependencies")
-
-
-def _run_async_query(coro: Any) -> Any:
-    """在线程安全的前提下执行异步协程。
-
-    自动检测当前是否在事件循环内，是则通过新线程执行，
-    否则直接用 asyncio.run()。
-
-    Args:
-        coro: 待执行的协程对象。
-
-    Returns:
-        协程的返回值。
-    """
-    try:
-        asyncio.get_running_loop()
-        import concurrent.futures
-
-        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
-            fut = pool.submit(asyncio.run, coro)
-            return fut.result(timeout=10)
-    except RuntimeError:
-        return asyncio.run(coro)
 
 
 async def _resolve_env_model(
@@ -486,14 +464,14 @@ async def _resolve_env_model(
     return None
 
 
-def _try_load_env_from_db(
+async def _try_load_env_from_db(
     env_id: str | None = None,
     env_name: str | None = None,
 ) -> EnvConfig | None:
     """从数据库加载环境配置，转换为 EnvConfig。
 
     优先按 env_id 精确查询，其次按 env_name 查询。
-    线程安全，可在同步/异步任意上下文中调用。
+    必须在已运行的事件循环中调用（async 函数）。
 
     Args:
         env_id: 环境 UUID 字符串（可选，优先级高于 env_name）。
@@ -502,46 +480,43 @@ def _try_load_env_from_db(
     Returns:
         EnvConfig 或 None（DB 未命中/连接失败时返回 None）。
     """
-    async def _query() -> EnvConfig | None:
-        session = create_independent_session()
-        try:
-            from framework.persistence.repositories.environment_repo import (
-                EnvironmentRepository,
-            )
+    session = create_independent_session()
+    try:
+        from framework.persistence.repositories.environment_repo import (
+            EnvironmentRepository,
+        )
 
-            repo = EnvironmentRepository(session)
-            model = await _resolve_env_model(repo, env_id, env_name)
-            if model is None:
-                return None
-
-            _log.debug(
-                "env_db_lookup",
-                env_name=model.name,
-                has_base_url=bool(model.base_url),
-                var_count=len(model.variables) if model.variables else 0,
-            )
-            return EnvConfig(
-                name=model.name,
-                base_url=model.base_url or "",
-                ws_url=model.ws_url or "",
-                variables=model.variables or {},
-                http=model.http_config or {},
-            )
-        except Exception as exc:
-            _log.warning(
-                "env_db_query_failed",
-                error=str(exc),
-                env_id=env_id,
-                env_name=env_name,
-            )
+        repo = EnvironmentRepository(session)
+        model = await _resolve_env_model(repo, env_id, env_name)
+        if model is None:
             return None
-        finally:
-            await session.close()
 
-    return _run_async_query(_query())
+        _log.debug(
+            "env_db_lookup",
+            env_name=model.name,
+            has_base_url=bool(model.base_url),
+            var_count=len(model.variables) if model.variables else 0,
+        )
+        return EnvConfig(
+            name=model.name,
+            base_url=model.base_url or "",
+            ws_url=model.ws_url or "",
+            variables=model.variables or {},
+            http=model.http_config or {},
+        )
+    except Exception as exc:
+        _log.warning(
+            "env_db_query_failed",
+            error=str(exc),
+            env_id=env_id,
+            env_name=env_name,
+        )
+        return None
+    finally:
+        await session.close()
 
 
-def create_runner(
+async def create_runner(
     env_name: str = "dev",
     environment_id: str | None = None,
 ) -> TestRunner:
@@ -553,6 +528,8 @@ def create_runner(
     3. 若都未传 → ConfigLoader 使用默认环境（YAML）
 
     通过缓存复用 runner 实例（按环境隔离），避免每次执行都重新创建连接池。
+
+    必须在已运行的事件循环中调用（async 函数）。
 
     Args:
         env_name: 环境名称（dev/staging/production 等），DB 命中时可作为回退名称。
@@ -566,7 +543,7 @@ def create_runner(
     # 缓存 key 优先用传入的环境 ID/名称
     cache_key = environment_id or env_name
 
-    with _runner_cache_lock:
+    async with _runner_cache_lock:
         if cache_key in _runner_cache:
             _log.debug("runner_cache_hit", cache_key=cache_key)
             return _runner_cache[cache_key]
@@ -574,7 +551,7 @@ def create_runner(
         # ── DB 环境加载（优先） ──
         env_config: EnvConfig | None = None
         if environment_id or env_name:
-            env_config = _try_load_env_from_db(
+            env_config = await _try_load_env_from_db(
                 env_id=environment_id,
                 env_name=env_name if not environment_id else None,
             )
@@ -633,14 +610,14 @@ def create_runner(
         return runner
 
 
-def invalidate_runner_cache(env_name: str | None = None) -> None:
+async def invalidate_runner_cache(env_name: str | None = None) -> None:
     """清除 runner 缓存（配置热加载时调用）
 
     Args:
         env_name: 指定环境名，为 None 时清除全部
     """
     global _runner_cache
-    with _runner_cache_lock:
+    async with _runner_cache_lock:
         if env_name is None:
             _runner_cache.clear()
         elif env_name in _runner_cache:
@@ -682,19 +659,22 @@ def parse_yaml_case(yaml_content: str) -> TestCase:
 
     # 情况 1: 完整套件格式 — 取第一个 case
     if "cases" in raw:
-        # 构建最小化 suite 结构
+        # 构建最小化 suite 结构（含套件级变量）
         from framework.parser_models import ParsedCase, ParsedSuite
 
+        suite_vars = raw.get("variables", {})
         parsed_suite = ParsedSuite(
             name=raw.get("name", "API Execution"),
             base_url=raw.get("base_url", ""),
-            variables=raw.get("variables", {}),
+            variables=suite_vars,
         )
         cases_raw = raw.get("cases", [])
         if not cases_raw:
             raise ValueError("套件中没有定义用例 (cases 为空)")
         first_case_raw = cases_raw[0]
         parsed_case = parser._to_parsed_case(first_case_raw, parsed_suite)
+        # 将套件级变量合并到用例变量（套件变量为基础，用例变量可覆盖）
+        parsed_case.variables = {**parsed_suite.variables, **parsed_case.variables}
         return parser._convert_case(parsed_case, TestSuite(name=""))
 
     # 情况 2: 单用例格式

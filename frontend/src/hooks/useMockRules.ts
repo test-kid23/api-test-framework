@@ -28,7 +28,7 @@ export function useCreateMockRule() {
   return useMutation({
     mutationFn: (payload: MockRuleCreate) => mocksApi.create(payload),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["mockRules"] });
+      queryClient.invalidateQueries({ queryKey: ["mockRules"], exact: false });
     },
   });
 }
@@ -38,7 +38,7 @@ export function useCreateMockRulesBatch() {
   return useMutation({
     mutationFn: (payload: MockBatchCreate) => mocksApi.createBatch(payload),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["mockRules"] });
+      queryClient.invalidateQueries({ queryKey: ["mockRules"], exact: false });
     },
   });
 }
@@ -54,7 +54,7 @@ export function useUpdateMockRule() {
       payload: MockRuleUpdate;
     }) => mocksApi.update(id, payload),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["mockRules"] });
+      queryClient.invalidateQueries({ queryKey: ["mockRules"], exact: false });
     },
   });
 }
@@ -64,7 +64,7 @@ export function useDeleteMockRule() {
   return useMutation({
     mutationFn: (id: string) => mocksApi.delete(id),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["mockRules"] });
+      queryClient.invalidateQueries({ queryKey: ["mockRules"], exact: false });
     },
   });
 }
@@ -74,7 +74,7 @@ export function useClearMockRules() {
   return useMutation({
     mutationFn: () => mocksApi.clearAll(),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["mockRules"] });
+      queryClient.invalidateQueries({ queryKey: ["mockRules"], exact: false });
     },
   });
 }

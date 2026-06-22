@@ -89,6 +89,7 @@
     "priority": "优先级",
     "status": "状态",
     "noCases": "暂无用例",
+    "number": "编号",
     "confirmDelete": "确认删除",
     "deleteWarning": "此操作不可撤销，确定要删除此用例吗？",
     "batchDelete": "批量删除"
@@ -111,6 +112,9 @@
     "pending": "等待中",
     "no": "序号",
     "execName": "执行名称",
+    "idCol": "编号",
+    "caseId": "用例ID",
+    "envLabel": "环境",
     "statusLabel": "状态",
     "passFail": "通过/失败",
     "trigger": "触发",
@@ -139,7 +143,10 @@
     "scheduled": "定时",
     "webhook": "Webhook",
     "api": "API",
-    "totalCount": "共{{count}}条"
+    "totalCount": "共{{count}}条",
+    "multiCases": "+{{count}}",
+    "copied": "已复制",
+    "clickToCopy": "点击复制完整ID"
   },
   "common": {
     "loading": "加载中...",
@@ -179,6 +186,17 @@
     "switch": "语言",
     "zhCN": "中文",
     "enUS": "English"
+  },
+  "variableDeps": {
+    "dialogTitle": "变量依赖缺失",
+    "dialogDesc": "以下用例引用了其他用例提取的变量，但当前所选用例中无人提供这些变量，单独执行将失败。",
+    "caseLabel": "用例",
+    "missingVars": "缺失变量",
+    "sourceMissing": "缺少提供方",
+    "suggestion": "建议将这些用例与提供变量的用例（如登录用例）一起选中后批量执行，或先单独执行提供变量的用例以初始化上下文。",
+    "cancelRun": "取消执行",
+    "continueAnyway": "仍然执行",
+    "varProvidedBy": "变量 {{var}} 由 {{case}} 提供"
   },
   "suites": {
     "title": "套件管理",

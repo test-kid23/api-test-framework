@@ -1,18 +1,16 @@
 /**
  * i18next 国际化配置.
  *
- * 支持中英文切换，语言偏好存储到 localStorage.
+ * 当前仅支持中文，英文已关闭。
+ * 如需恢复多语言支持，取消注释 LanguageDetector 和检测配置即可。
  */
 import i18n from "i18next";
 import { initReactI18next } from "react-i18next";
-import LanguageDetector from "i18next-browser-languagedetector";
 
 import zhCN from "./locales/zh-CN.json";
-import enUS from "./locales/en-US.json";
 
 const resources = {
   "zh-CN": { translation: zhCN },
-  "en-US": { translation: enUS },
 };
 
 i18n

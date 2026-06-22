@@ -40,7 +40,7 @@ export function useTriggerExecution() {
   return useMutation({
     mutationFn: (payload: ExecutionRequest) => executionsApi.trigger(payload),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["executions"] });
+      queryClient.invalidateQueries({ queryKey: ["executions"], exact: false });
     },
   });
 }
@@ -50,7 +50,7 @@ export function useCancelExecution() {
   return useMutation({
     mutationFn: (id: string) => executionsApi.cancel(id),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["executions"] });
+      queryClient.invalidateQueries({ queryKey: ["executions"], exact: false });
     },
   });
 }

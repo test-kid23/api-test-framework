@@ -8,6 +8,8 @@
 
 from __future__ import annotations
 
+import uuid
+
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 
 from framework.persistence.models.base import Base
@@ -123,8 +125,68 @@ async def init_app(
                     project=default_project_name,
                 )
 
+        # 6. 从 config/env.yaml 同步环境到数据库
+        await _seed_environments(session, project.id if project else None)
+
         await session.commit()
         _log.info("init_app_complete")
 
     finally:
         await session.close()
+
+
+async def _seed_environments(session: AsyncSession, project_id: uuid.UUID | None) -> None:
+    """从 config/env.yaml 同步环境配置到数据库（幂等操作）。
+
+    Args:
+        session: 数据库会话。
+        project_id: 默认项目 ID，环境绑定到该项目。
+    """
+    try:
+        from framework.config import ConfigLoader
+
+        loader = ConfigLoader()
+        config_raw = loader._load_yaml("config/env.yaml")
+        environments = config_raw.get("environments", {})
+
+        if not environments:
+            _log.info("env_seed_no_environments_found_in_config")
+            return
+
+        from sqlalchemy import select
+        from framework.persistence.models.environment import EnvironmentModel
+
+        existing_stmt = select(EnvironmentModel.name)
+        existing_result = await session.execute(existing_stmt)
+        existing_names = {row[0] for row in existing_result.fetchall()}
+
+        seeded = 0
+        for env_name, env_config in environments.items():
+            if not isinstance(env_config, dict):
+                continue
+            if env_name in existing_names:
+                continue
+
+            base_url = env_config.get("base_url")
+            ws_url = env_config.get("ws_url")
+            variables = env_config.get("variables")
+            http_config = env_config.get("http")
+
+            env_model = EnvironmentModel(
+                name=env_name,
+                description=f"{env_name} 环境（从 env.yaml 自动创建）",
+                base_url=base_url,
+                ws_url=ws_url,
+                variables=variables,
+                http_config=http_config,
+                project_id=project_id,
+            )
+            session.add(env_model)
+            seeded += 1
+
+        if seeded > 0:
+            await session.flush()
+            _log.info("env_seed_complete", count=seeded, environments=list(environments.keys()))
+
+    except Exception as e:
+        _log.warning("env_seed_failed", error=str(e))

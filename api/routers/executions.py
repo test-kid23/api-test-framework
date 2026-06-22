@@ -63,6 +63,24 @@ _background_tasks: set[asyncio.Task] = set()
 # ── Helpers ───────────────────────────────────────────────
 
 
+def _generate_execution_name(case_count: int, case_names: list[str] | None = None) -> str:
+    """生成简短的执行名称（对标 TestRail/MeterSphere 风格）。
+
+    Args:
+        case_count: 用例数量。
+        case_names: 用例名称列表（可选）。
+
+    Returns:
+        人类可读的简短执行名称。不超过 ~30 字符。
+    """
+    if case_names and len(case_names) == 1:
+        name = case_names[0]
+        return name[:25] + "…" if len(name) > 25 else name
+    if case_count > 1:
+        return f"批量执行({case_count}个用例)"
+    return "执行"
+
+
 def _compute_summary(results: list[dict[str, Any]]) -> dict[str, int]:
     """根据结果列表计算汇总统计。"""
     passed = sum(1 for r in results if r.get("status") == "PASS")
@@ -133,24 +151,81 @@ def _safe_parse_trigger(raw: str) -> ExecutionTrigger:
         return ExecutionTrigger.API
 
 
-def _execution_to_response(exec_model: ExecutionModel) -> ExecutionResponse:
-    """将 ExecutionModel 转换为 API 响应（不含 results/summary 详情）。"""
+def _ensure_utc(dt: datetime | None) -> datetime | None:
+    """确保 datetime 携带 UTC 时区标识。
+
+    SQLite 的 DateTime(timezone=True) 列在读写时会丢失时区，
+    API 返回前需要补回 UTC，避免前端误当成本地时间。
+
+    Args:
+        dt: 可能无时区的 datetime。
+
+    Returns:
+        带 UTC 时区的 datetime；输入为 None 时返回 None。
+    """
+    if dt is not None and dt.tzinfo is None:
+        return dt.replace(tzinfo=timezone.utc)
+    return dt
+
+
+def _execution_to_response(
+    exec_model: ExecutionModel,
+    results: list[ExecutionResultModel] | None = None,
+) -> ExecutionResponse:
+    """将 ExecutionModel 转换为 API 响应。
+
+    Args:
+        exec_model: 执行 ORM 模型。
+        results: 关联的执行结果列表（可选，列表接口传入以填充 case_ids/名称/summary）。
+    """
+    case_ids: list[str] = []
+    case_names: list[str] = []
+    summary: dict[str, Any] = {}
+    if results:
+        for r in results:
+            if r.case_id:
+                case_ids.append(str(r.case_id))
+            if r.case_name:
+                case_names.append(r.case_name)
+        # 计算通过/失败统计（前端 summary.passed_cases / summary.failed_cases）
+        total_count = len(results)
+        passed_count = sum(1 for r in results if r.status == "PASS")
+        failed_count = sum(1 for r in results if r.status == "FAIL")
+        error_count = sum(1 for r in results if r.status == "ERROR")
+        summary = {
+            "total_cases": total_count,
+            "passed_cases": passed_count,
+            "failed_cases": failed_count,
+            "error_cases": error_count,
+        }
+
+    # 构建简短的执行名称（对标大厂平台：主标识用 display_number，名称为简短描述）
+    if case_names:
+        if len(case_names) == 1:
+            name = case_names[0][:25] + "…" if len(case_names[0]) > 25 else case_names[0]
+        else:
+            name = f"批量执行({len(case_names)}个用例)"
+    else:
+        name = "执行"
+
     return ExecutionResponse(
         id=str(exec_model.id),
-        name=f"exec-{str(exec_model.id)[:12]}",
+        display_number=exec_model.display_number,
+        name=name,
         status=_safe_parse_status(exec_model.status),
         trigger=_safe_parse_trigger(exec_model.trigger),
         env=exec_model.env or "dev",
         mode="distributed" if exec_model.celery_task_id else "local",
         celery_task_id=exec_model.celery_task_id,
-        case_ids=[],
+        case_ids=case_ids,
+        case_names=case_names,
         suite_id=str(exec_model.suite_id) if exec_model.suite_id else None,
         results=[],
-        started_at=exec_model.started_at,
-        finished_at=exec_model.finished_at,
-        summary={},
-        created_at=exec_model.created_at,
-        updated_at=exec_model.finished_at or exec_model.created_at,
+        started_at=_ensure_utc(exec_model.started_at),
+        finished_at=_ensure_utc(exec_model.finished_at),
+        summary=summary,
+        created_at=_ensure_utc(exec_model.created_at),
+        updated_at=_ensure_utc(exec_model.finished_at or exec_model.created_at),
     )
 
 
@@ -229,47 +304,41 @@ async def trigger_execution(
     执行结果可通过 GET /executions/{id} 查询，
     分布式模式下还可通过 GET /executions/{id}/status 查询 Celery 任务实时状态。
     """
-    # ── 解析 suite_id（可选）──
-    suite_uuid: uuid.UUID | None = None
-    if body.suite_id:
+    # 如果未提供 case_ids 但提供了 suite_id，从套件关联查询
+    case_ids_to_run = list(body.case_ids)
+    if not case_ids_to_run and body.suite_id:
         try:
-            suite_uuid = uuid.UUID(body.suite_id)
+            suite_uuid_pre = uuid.UUID(body.suite_id)
+            suite = await session.get(TestSuiteModel, suite_uuid_pre)
+            if suite is None:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail=f"套件不存在: {body.suite_id}",
+                )
+            # 通过 suite_name 查找关联的用例 ID
+            case_rows = (
+                await session.execute(
+                    select(TestCaseModel.id).where(TestCaseModel.suite_name == suite.name)
+                )
+            ).scalars().all()
+            case_ids_to_run = [str(cid) for cid in case_rows]
+            _log.info(
+                "resolved_cases_from_suite",
+                suite_id=body.suite_id,
+                suite_name=suite.name,
+                case_count=len(case_ids_to_run),
+            )
         except ValueError:
-            suite_uuid = None
+            pass
 
-    # ── 若提供了 suite_id 但 case_ids 为空，从套件 config 中自动解析 ──
-    resolved_case_ids: list[str] = list(body.case_ids)
-    if suite_uuid and not resolved_case_ids:
-        suite_result = await session.execute(
-            select(TestSuiteModel.config).where(TestSuiteModel.id == suite_uuid)
-        )
-        suite_config = suite_result.scalar_one_or_none()
-        if suite_config is None:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"套件不存在: {body.suite_id}",
-            )
-        if isinstance(suite_config, str):
-            try:
-                suite_config = json.loads(suite_config)
-            except (json.JSONDecodeError, TypeError):
-                suite_config = {}
-        resolved_case_ids = suite_config.get("case_ids", []) if isinstance(suite_config, dict) else []
-        if not resolved_case_ids:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"套件 {body.suite_id} 中没有关联任何用例",
-            )
-
-    # 至少需要一个用例
-    if not resolved_case_ids:
+    if not case_ids_to_run:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="请提供至少一个用例 ID 或有效的套件 ID",
+            detail="请提供至少一个用例 ID 或指定有效的套件",
         )
 
     # 验证所有 case_ids 存在
-    for cid in resolved_case_ids:
+    for cid in case_ids_to_run:
         try:
             case_uuid = uuid.UUID(cid)
         except ValueError:
@@ -286,10 +355,25 @@ async def trigger_execution(
                 detail=f"用例不存在: {cid}",
             )
 
+    # 解析 suite_id（可选）
+    suite_uuid: uuid.UUID | None = None
+    if body.suite_id:
+        try:
+            suite_uuid = uuid.UUID(body.suite_id)
+        except ValueError:
+            suite_uuid = None
+
+    # 生成下一个展示序号（项目内自增）
+    next_num_result = await session.execute(
+        select(func.coalesce(func.max(ExecutionModel.display_number), 0))
+    )
+    next_display_num = next_num_result.scalar_one() + 1
+
     # 创建执行记录
     exec_id = uuid.uuid4()
     exec_model = ExecutionModel(
         id=exec_id,
+        display_number=next_display_num,
         suite_id=suite_uuid,
         status=ExecutionStatus.PENDING.value,
         trigger=body.trigger.value,
@@ -308,7 +392,7 @@ async def trigger_execution(
     if mode == "distributed":
         celery_task_id = await _dispatch_to_celery(
             exec_id=str(exec_id),
-            case_ids=resolved_case_ids,
+            case_ids=case_ids_to_run,
             env_name=body.env,
             session=session,
             exec_uuid=exec_id,
@@ -327,7 +411,7 @@ async def trigger_execution(
         bg_task = asyncio.create_task(
             _execute_cases_in_background(
                 exec_id=str(exec_id),
-                case_ids=resolved_case_ids,
+                case_ids=case_ids_to_run,
                 env_name=body.env,
             )
         )
@@ -336,13 +420,14 @@ async def trigger_execution(
 
     response = ExecutionResponse(
         id=str(exec_id),
-        name=f"exec-{str(exec_id)[:12]}",
+        display_number=next_display_num,
+        name=_generate_execution_name(len(case_ids_to_run)),
         status=ExecutionStatus.PENDING,
         trigger=body.trigger,
         env=body.env,
         mode=actual_mode,
         celery_task_id=celery_task_id,
-        case_ids=resolved_case_ids,
+        case_ids=case_ids_to_run,
         suite_id=body.suite_id,
         results=[],
         created_at=exec_model.created_at,
@@ -413,9 +498,10 @@ async def _execute_cases_in_background(
     session: AsyncSession | None = None
     try:
         exec_uuid = uuid.UUID(exec_id)
-        runner = create_runner(env_name)
-
+        # 提前创建 session，确保即使 create_runner 失败也能更新执行状态
         session = create_independent_session()
+        runner = await create_runner(env_name)
+
         exec_repo = ExecutionRepository(session)
         result_repo = ExecutionResultRepository(session)
 
@@ -549,11 +635,16 @@ async def cancel_execution(
 async def list_executions(
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=20, ge=1, le=100),
+    status: str | None = Query(default=None, description="按状态过滤: PENDING/RUNNING/PASSED/FAILED/ERROR/CANCELLED"),
     session: AsyncSession = Depends(get_db_session),
     current_user: CurrentUser = Depends(get_current_user),
 ):
     """查询执行历史记录（分页，按创建时间倒序）。"""
     stmt = select(ExecutionModel)
+
+    # 状态过滤
+    if status:
+        stmt = stmt.where(ExecutionModel.status == status.upper())
 
     # 项目隔离：非 admin 用户只能看自己项目的执行
     if not current_user.is_admin():
@@ -578,7 +669,21 @@ async def list_executions(
     result = await session.execute(stmt)
     exec_models = result.scalars().all()
 
-    exec_items = [_execution_to_response(m) for m in exec_models]
+    # 批量查询关联的 execution_results，用于填充 case_ids 和用例名称
+    exec_ids = [m.id for m in exec_models]
+    results_by_exec: dict[uuid.UUID, list[ExecutionResultModel]] = {}
+    if exec_ids:
+        results_stmt = select(ExecutionResultModel).where(
+            ExecutionResultModel.execution_id.in_(exec_ids)
+        )
+        results_result = await session.execute(results_stmt)
+        for row in results_result.scalars().all():
+            results_by_exec.setdefault(row.execution_id, []).append(row)
+
+    exec_items = [
+        _execution_to_response(m, results_by_exec.get(m.id))
+        for m in exec_models
+    ]
 
     meta = PaginationMeta(
         page=page,
@@ -617,13 +722,24 @@ async def get_execution(
 
     results = exec_model.results or []
     case_results = _result_models_to_case_results(list(results))
+    case_names = [r.case_name for r in case_results if r.case_name]
     summary = _compute_summary([
         {"status": r.status} for r in case_results
     ])
 
+    ts = exec_model.created_at.strftime("%m-%d %H:%M") if exec_model.created_at else ""
+    if case_names:
+        if len(case_names) == 1:
+            detail_name = f"{ts} {case_names[0]}"
+        else:
+            detail_name = f"{ts} 批量执行 {len(case_names)}个用例"
+    else:
+        detail_name = f"{ts} 执行" if ts else f"执行-{str(exec_model.id)[:8]}"
+
     response = ExecutionResponse(
         id=str(exec_model.id),
-        name=f"exec-{str(exec_model.id)[:12]}",
+        display_number=exec_model.display_number,
+        name=detail_name,
         status=_safe_parse_status(exec_model.status),
         trigger=_safe_parse_trigger(exec_model.trigger),
         env=exec_model.env or "dev",
@@ -632,11 +748,16 @@ async def get_execution(
         case_ids=[str(r.case_id) if r.case_id else "" for r in results],
         suite_id=str(exec_model.suite_id) if exec_model.suite_id else None,
         results=case_results,
-        started_at=exec_model.started_at,
-        finished_at=exec_model.finished_at,
-        summary=summary,
-        created_at=exec_model.created_at,
-        updated_at=exec_model.finished_at or exec_model.created_at,
+        started_at=_ensure_utc(exec_model.started_at),
+        finished_at=_ensure_utc(exec_model.finished_at),
+        summary={
+            "total_cases": len(case_results),
+            "passed_cases": sum(1 for r in case_results if r.status == "PASS"),
+            "failed_cases": sum(1 for r in case_results if r.status == "FAIL"),
+            "error_cases": sum(1 for r in case_results if r.status == "ERROR"),
+        },
+        created_at=_ensure_utc(exec_model.created_at),
+        updated_at=_ensure_utc(exec_model.finished_at or exec_model.created_at),
     )
     return SuccessResponse(data=response)
 

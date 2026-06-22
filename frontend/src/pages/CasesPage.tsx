@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { useCases, useDeleteCase } from "@/hooks/useCases";
 import { Button } from "@/components/ui/button";
+import { Tooltip, TooltipContent, TooltipTrigger, TooltipProvider } from "@/components/ui/tooltip";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
 import {
@@ -25,7 +26,8 @@ import {
   PaginationLink, PaginationNext, PaginationPrevious,
 } from "@/components/ui/pagination";
 import { toast } from "sonner";
-import { Plus, Search, Pencil, Trash2, Loader2, Upload, XSquare, FileText } from "lucide-react";
+import { Plus, Search, Pencil, Trash2, Loader2, Upload, XSquare, FileText, Play } from "lucide-react";
+import { executionsApi } from "@/api/executions";
 import { format } from "date-fns";
 import { zhCN } from "date-fns/locale";
 import type { TestCase, CasePriority } from "@/types";
@@ -50,6 +52,7 @@ export function CasesPage() {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [batchDeleteOpen, setBatchDeleteOpen] = useState(false);
   const [cmdOpen, setCmdOpen] = useState(false);
+  const [runningIds, setRunningIds] = useState<Set<string>>(new Set());
 
   const { data, isLoading, isError } = useCases({
     page,
@@ -138,6 +141,44 @@ export function CasesPage() {
     setBatchDeleteOpen(false);
   };
 
+  const handleRunCase = async (caseId: string) => {
+    await doRunCase(caseId);
+  };
+
+  const doRunCase = async (caseId: string) => {
+    setRunningIds((prev) => new Set(prev).add(caseId));
+    try {
+      await executionsApi.trigger({ case_ids: [caseId], trigger: "api" });
+      toast.success("执行已触发");
+      navigate("/executions");
+    } catch {
+      toast.error("执行失败");
+    } finally {
+      setRunningIds((prev) => {
+        const next = new Set(prev);
+        next.delete(caseId);
+        return next;
+      });
+    }
+  };
+
+  const handleBatchRun = async () => {
+    if (selectedIds.size === 0) return;
+    await doBatchRun();
+  };
+
+  const doBatchRun = async () => {
+    if (selectedIds.size === 0) return;
+    try {
+      await executionsApi.trigger({ case_ids: [...selectedIds], trigger: "api" });
+      toast.success(`已触发 ${selectedIds.size} 个用例执行`);
+      setSelectedIds(new Set());
+      navigate("/executions");
+    } catch {
+      toast.error("批量执行失败");
+    }
+  };
+
   const formatDate = (dateStr: string) => {
     try {
       return format(new Date(dateStr), "MM-dd HH:mm", { locale: zhCN });
@@ -222,33 +263,6 @@ export function CasesPage() {
         </div>
       </div>
 
-      {/* Batch actions bar */}
-      {canEdit && selectedIds.size > 0 && (
-        <div className="flex items-center gap-3 rounded-lg border bg-muted/30 px-4 py-2">
-          <span className="text-sm font-medium">
-            已选 {selectedIds.size} 项
-          </span>
-          <Button
-            size="sm"
-            variant="outline"
-            onClick={() => setSelectedIds(new Set())}
-            className="gap-1"
-          >
-            <XSquare className="h-3.5 w-3.5" />
-            取消选择
-          </Button>
-          <Button
-            size="sm"
-            variant="destructive"
-            onClick={() => setBatchDeleteOpen(true)}
-            className="gap-1 ml-auto"
-          >
-            <Trash2 className="h-3.5 w-3.5" />
-            批量删除
-          </Button>
-        </div>
-      )}
-
       {/* Table */}
       <Card>
         <CardContent className="p-0">
@@ -257,6 +271,7 @@ export function CasesPage() {
               {/* Table header skeleton */}
               <div className="flex items-center gap-4 pb-3 border-b">
                 <Skeleton className="h-4 w-6" />
+                <Skeleton className="h-4 w-10" />
                 <Skeleton className="h-4 w-32" />
                 <Skeleton className="h-4 w-16 ml-auto" />
                 <Skeleton className="h-4 w-16" />
@@ -269,6 +284,7 @@ export function CasesPage() {
                   className="flex items-center gap-4 py-3 border-b last:border-0"
                 >
                   <Skeleton className="h-4 w-4 rounded" />
+                  <Skeleton className="h-4 w-8" />
                   <div className="flex-1 space-y-1.5">
                     <Skeleton className="h-4 w-48" />
                     <Skeleton className="h-3 w-32" />
@@ -283,6 +299,7 @@ export function CasesPage() {
                   <div className="flex gap-1">
                     <Skeleton className="h-8 w-8 rounded" />
                     <Skeleton className="h-8 w-8 rounded" />
+                    <Skeleton className="h-8 w-8 rounded" />
                   </div>
                 </div>
               ))}
@@ -295,20 +312,67 @@ export function CasesPage() {
             <>
               <Table>
                 <TableHeader>
-                  <TableRow>
-                    <TableHead className="w-10">
-                      <Checkbox
-                        checked={isAllSelected}
-                        onCheckedChange={toggleSelectAll}
-                      />
-                    </TableHead>
-                    <TableHead>用例名称</TableHead>
-                    <TableHead className="w-[200px]">标签</TableHead>
-                    <TableHead className="w-[80px]">优先级</TableHead>
-                    <TableHead className="w-[80px]">版本</TableHead>
-                    <TableHead className="w-[140px]">更新时间</TableHead>
-                    <TableHead className="w-[120px]">操作</TableHead>
-                  </TableRow>
+                  {canEdit && selectedIds.size > 0 ? (
+                    <TableRow className="bg-primary/5 border-b-2 border-primary/30 transition-colors">
+                      <TableHead className="w-10">
+                        <Checkbox
+                          checked={isAllSelected}
+                          onCheckedChange={toggleSelectAll}
+                        />
+                      </TableHead>
+                      <TableHead colSpan={7} className="py-2">
+                        <div className="flex items-center gap-3">
+                          <span className="text-sm font-semibold text-primary">
+                            已选 {selectedIds.size} 项
+                          </span>
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => setSelectedIds(new Set())}
+                            className="gap-1 h-7 text-xs"
+                          >
+                            <XSquare className="h-3.5 w-3.5" />
+                            取消选择
+                          </Button>
+                          <div className="flex-1" />
+                          <Button
+                            size="sm"
+                            variant="default"
+                            onClick={handleBatchRun}
+                            className="gap-1 h-7 text-xs"
+                          >
+                            <Play className="h-3.5 w-3.5" />
+                            批量执行
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="destructive"
+                            onClick={() => setBatchDeleteOpen(true)}
+                            className="gap-1 h-7 text-xs"
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                            批量删除
+                          </Button>
+                        </div>
+                      </TableHead>
+                    </TableRow>
+                  ) : (
+                    <TableRow>
+                      <TableHead className="w-10">
+                        <Checkbox
+                          checked={isAllSelected}
+                          onCheckedChange={toggleSelectAll}
+                        />
+                      </TableHead>
+                      <TableHead className="w-[70px]">编号</TableHead>
+                      <TableHead>用例名称</TableHead>
+                      <TableHead className="w-[200px]">标签</TableHead>
+                      <TableHead className="w-[80px]">优先级</TableHead>
+                      <TableHead className="w-[80px]">版本</TableHead>
+                      <TableHead className="w-[140px]">更新时间</TableHead>
+                      <TableHead className="w-[160px]">操作</TableHead>
+                    </TableRow>
+                  )}
                 </TableHeader>
                 <TableBody>
                   {data.items.map((c: TestCase) => (
@@ -322,6 +386,9 @@ export function CasesPage() {
                           checked={selectedIds.has(c.id)}
                           onCheckedChange={() => toggleSelect(c.id)}
                         />
+                      </TableCell>
+                      <TableCell className="text-sm text-muted-foreground font-mono">
+                        #{c.display_number}
                       </TableCell>
                       <TableCell>
                         <div>
@@ -362,20 +429,53 @@ export function CasesPage() {
                         <div className="flex gap-1">
                           {canEdit && (
                             <>
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                onClick={() => navigate(`/cases/${c.id}/edit`)}
-                              >
-                                <Pencil className="h-4 w-4" />
-                              </Button>
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                onClick={() => setDeleteId(c.id)}
-                              >
-                                <Trash2 className="h-4 w-4 text-destructive" />
-                              </Button>
+                              <TooltipProvider>
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <Button
+                                      variant="ghost"
+                                      size="icon"
+                                      disabled={runningIds.has(c.id)}
+                                      onClick={() => handleRunCase(c.id)}
+                                    >
+                                      {runningIds.has(c.id) ? (
+                                        <Loader2 className="h-4 w-4 animate-spin" />
+                                      ) : (
+                                        <Play className="h-4 w-4" />
+                                      )}
+                                    </Button>
+                                  </TooltipTrigger>
+                                  <TooltipContent>执行用例</TooltipContent>
+                                </Tooltip>
+                              </TooltipProvider>
+                              <TooltipProvider>
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <Button
+                                      variant="ghost"
+                                      size="icon"
+                                      onClick={() => navigate(`/cases/${c.id}/edit`)}
+                                    >
+                                      <Pencil className="h-4 w-4" />
+                                    </Button>
+                                  </TooltipTrigger>
+                                  <TooltipContent>编辑用例</TooltipContent>
+                                </Tooltip>
+                              </TooltipProvider>
+                              <TooltipProvider>
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <Button
+                                      variant="ghost"
+                                      size="icon"
+                                      onClick={() => setDeleteId(c.id)}
+                                    >
+                                      <Trash2 className="h-4 w-4 text-destructive" />
+                                    </Button>
+                                  </TooltipTrigger>
+                                  <TooltipContent>删除用例</TooltipContent>
+                                </Tooltip>
+                              </TooltipProvider>
                             </>
                           )}
                         </div>
@@ -521,6 +621,7 @@ export function CasesPage() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
     </div>
   );
 }

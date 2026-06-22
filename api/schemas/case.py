@@ -44,7 +44,7 @@ class CaseCreateRequest(BaseModel):
     suite_name: Optional[str] = Field(
         default=None,
         max_length=255,
-        description="所属套件名称",
+        description="所属套件名称（用于 setup/teardown 预执行）",
     )
 
 
@@ -88,6 +88,7 @@ class CaseUpdateRequest(BaseModel):
 class CaseResponse(TimestampMixin):
     """用例响应"""
 
+    display_number: int = Field(default=0, description="人类可读的展示序号")
     name: str = Field(..., description="用例名称")
     description: str = Field(default="", description="用例描述")
     tags: list[str] = Field(default_factory=list, description="标签")
@@ -102,6 +103,7 @@ class CaseListItem(BaseModel):
     """用例列表项（精简版，不含 yaml_content）"""
 
     id: str = Field(..., description="唯一标识符")
+    display_number: int = Field(default=0, description="人类可读的展示序号")
     name: str = Field(..., description="用例名称")
     description: str = Field(default="", description="用例描述")
     tags: list[str] = Field(default_factory=list, description="标签")

@@ -82,6 +82,14 @@ class TestCaseModel(Base):
         index=True,
         comment="所属项目 ID（多租户隔离）",
     )
+    display_number: Mapped[int] = mapped_column(
+        Integer,
+        nullable=False,
+        default=0,
+        server_default="0",
+        index=True,
+        comment="人类可读的展示序号（自增，从 1 开始）",
+    )
     version: Mapped[int] = mapped_column(
         Integer,
         nullable=False,

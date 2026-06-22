@@ -87,6 +87,14 @@ class ExecutionModel(Base):
         index=True,
         comment="所属项目 ID（多租户隔离）",
     )
+    display_number: Mapped[int] = mapped_column(
+        Integer,
+        nullable=False,
+        default=0,
+        server_default="0",
+        index=True,
+        comment="人类可读的展示序号（自增，从 1 开始）",
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         server_default=func.now(),

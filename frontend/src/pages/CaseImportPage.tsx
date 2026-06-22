@@ -134,7 +134,7 @@ export function CaseImportPage() {
       {/* URL Input + Parse */}
       <Card>
         <CardHeader>
-          <CardTitle className="text-lg">OpenAPI Spec URL</CardTitle>
+          <CardTitle className="text-lg">OpenAPI 规范 URL</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="flex items-end gap-3">

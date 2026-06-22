@@ -25,7 +25,7 @@ export function useCreateEnvironment() {
     mutationFn: (payload: EnvironmentCreate) =>
       environmentsApi.create(payload),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["environments"] });
+      queryClient.invalidateQueries({ queryKey: ["environments"], exact: false });
     },
   });
 }
@@ -41,7 +41,7 @@ export function useUpdateEnvironment() {
       payload: EnvironmentUpdate;
     }) => environmentsApi.update(id, payload),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["environments"] });
+      queryClient.invalidateQueries({ queryKey: ["environments"], exact: false });
     },
   });
 }
@@ -51,7 +51,7 @@ export function useDeleteEnvironment() {
   return useMutation({
     mutationFn: (id: string) => environmentsApi.delete(id),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["environments"] });
+      queryClient.invalidateQueries({ queryKey: ["environments"], exact: false });
     },
   });
 }
