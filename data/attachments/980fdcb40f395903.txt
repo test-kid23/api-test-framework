@@ -1,3 +1,0 @@
-2026-06-27 05:47:22 [info     ] recording_started              session_id=3b4832858f84 session_name=test_session
-2026-06-27 05:47:22 [info     ] har_saved                      entries=0 path=recordings/test_session_3b4832858f84.har
-2026-06-27 05:47:22 [info     ] recording_stopped              duration_s=0.0 entry_count=0 har_path=recordings/test_session_3b4832858f84.har session_id=3b4832858f84
