@@ -1,3 +1,0 @@
-2026-07-13 05:29:03 [info     ] recording_started              session_id=9bc653cf833b session_name=test_session
-2026-07-13 05:29:03 [info     ] har_saved                      entries=0 path=recordings/test_session_9bc653cf833b.har
-2026-07-13 05:29:03 [info     ] recording_stopped              duration_s=0.0 entry_count=0 har_path=recordings/test_session_9bc653cf833b.har session_id=9bc653cf833b
