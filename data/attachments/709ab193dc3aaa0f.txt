@@ -1,3 +1,0 @@
-2026-07-14 04:42:55 [info     ] recording_started              session_id=24e36f7ed081 session_name=test_session
-2026-07-14 04:42:55 [info     ] har_saved                      entries=0 path=recordings/test_session_24e36f7ed081.har
-2026-07-14 04:42:55 [info     ] recording_stopped              duration_s=0.0 entry_count=0 har_path=recordings/test_session_24e36f7ed081.har session_id=24e36f7ed081
