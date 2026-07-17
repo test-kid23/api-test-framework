@@ -1,0 +1,1 @@
+2026-07-17 04:56:19 [info     ] schema_inferred                case_name=test_api field_count=6 required_count=5 sample_count=3
