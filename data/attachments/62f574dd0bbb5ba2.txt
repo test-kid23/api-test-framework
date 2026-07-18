@@ -1,0 +1,3 @@
+2026-07-18 04:40:30 [info     ] recording_started              session_id=31d10a1bdd49 session_name=test_session
+2026-07-18 04:40:30 [info     ] har_saved                      entries=0 path=recordings/test_session_31d10a1bdd49.har
+2026-07-18 04:40:30 [info     ] recording_stopped              duration_s=0.0 entry_count=0 har_path=recordings/test_session_31d10a1bdd49.har session_id=31d10a1bdd49
