@@ -1,0 +1,3 @@
+2026-07-21 05:12:51 [info     ] recording_started              session_id=32bfe6489008 session_name=test_session
+2026-07-21 05:12:51 [info     ] har_saved                      entries=0 path=recordings/test_session_32bfe6489008.har
+2026-07-21 05:12:51 [info     ] recording_stopped              duration_s=0.0 entry_count=0 har_path=recordings/test_session_32bfe6489008.har session_id=32bfe6489008
