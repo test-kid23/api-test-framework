@@ -1,3 +1,0 @@
-2026-07-22 05:11:30 [info     ] recording_started              session_id=b2b71c6414dc session_name=test_session
-2026-07-22 05:11:30 [info     ] har_saved                      entries=0 path=recordings/test_session_b2b71c6414dc.har
-2026-07-22 05:11:30 [info     ] recording_stopped              duration_s=0.0 entry_count=0 har_path=recordings/test_session_b2b71c6414dc.har session_id=b2b71c6414dc
