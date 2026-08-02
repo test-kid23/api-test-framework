@@ -1,0 +1,2 @@
+2026-08-02 05:19:18 [info     ] har_saved                      entries=2 path=/tmp/tmpifid232_/test.har
+2026-08-02 05:19:18 [info     ] cases_generated                case_count=2 output_file=/tmp/tmpifid232_/Integration_Test_Suite.yaml skipped=0
