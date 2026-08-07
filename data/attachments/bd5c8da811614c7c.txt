@@ -1,2 +1,0 @@
-2026-08-06 04:57:50 [info     ] har_saved                      entries=2 path=/tmp/tmpbpb_50id/test.har
-2026-08-06 04:57:50 [info     ] cases_generated                case_count=2 output_file=/tmp/tmpbpb_50id/Integration_Test_Suite.yaml skipped=0
