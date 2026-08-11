@@ -1,3 +1,0 @@
-2026-08-10 03:44:27 [info     ] recording_started              session_id=4db98f930f58 session_name=test_session
-2026-08-10 03:44:27 [info     ] har_saved                      entries=0 path=recordings/test_session_4db98f930f58.har
-2026-08-10 03:44:27 [info     ] recording_stopped              duration_s=0.0 entry_count=0 har_path=recordings/test_session_4db98f930f58.har session_id=4db98f930f58
