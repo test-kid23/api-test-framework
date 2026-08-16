@@ -1,0 +1,1 @@
+2026-08-16 02:52:31 [info     ] file_parsed                    case_count=9 filename=test_httpbin.yaml suite_name='HTTPBin 基础接口测试'
