@@ -1,1 +1,0 @@
-2026-08-21 02:55:11 [info     ] file_parsed                    case_count=22 filename=test_sim_api.yaml suite_name='仿真接口测试服务 - 完整测试套件'
