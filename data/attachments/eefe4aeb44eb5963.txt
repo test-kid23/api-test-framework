@@ -1,1 +1,0 @@
-2026-08-27 12:10:50 [info     ] schema_inferred                case_name= field_count=4 required_count=4 sample_count=2
