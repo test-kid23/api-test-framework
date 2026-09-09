@@ -1,0 +1,3 @@
+2026-09-09 06:54:52 [info     ] recording_started              session_id=8cd2767358da session_name=test_session
+2026-09-09 06:54:52 [info     ] har_saved                      entries=0 path=recordings/test_session_8cd2767358da.har
+2026-09-09 06:54:52 [info     ] recording_stopped              duration_s=0.0 entry_count=0 har_path=recordings/test_session_8cd2767358da.har session_id=8cd2767358da
