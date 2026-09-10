@@ -1,0 +1,2 @@
+2026-09-10 06:50:53 [info     ] har_saved                      entries=2 path=/tmp/tmpi7ibia24/test.har
+2026-09-10 06:50:53 [info     ] cases_generated                case_count=2 output_file=/tmp/tmpi7ibia24/Integration_Test_Suite.yaml skipped=0
