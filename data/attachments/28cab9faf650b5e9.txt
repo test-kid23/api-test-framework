@@ -1,0 +1,3 @@
+2026-10-07 07:57:24 [info     ] recording_started              session_id=f086aed01fbb session_name=test_session
+2026-10-07 07:57:24 [info     ] har_saved                      entries=0 path=recordings/test_session_f086aed01fbb.har
+2026-10-07 07:57:24 [info     ] recording_stopped              duration_s=0.0 entry_count=0 har_path=recordings/test_session_f086aed01fbb.har session_id=f086aed01fbb
