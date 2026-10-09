@@ -1,0 +1,3 @@
+2026-10-09 08:12:10 [info     ] recording_started              session_id=65770db5c545 session_name=test_session
+2026-10-09 08:12:10 [info     ] har_saved                      entries=0 path=recordings/test_session_65770db5c545.har
+2026-10-09 08:12:10 [info     ] recording_stopped              duration_s=0.0 entry_count=0 har_path=recordings/test_session_65770db5c545.har session_id=65770db5c545
