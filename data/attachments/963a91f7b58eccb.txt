@@ -1,3 +1,0 @@
-2026-10-15 06:44:37 [info     ] recording_started              session_id=9ea949e79d0c session_name=test_session
-2026-10-15 06:44:37 [info     ] har_saved                      entries=0 path=recordings/test_session_9ea949e79d0c.har
-2026-10-15 06:44:37 [info     ] recording_stopped              duration_s=0.0 entry_count=0 har_path=recordings/test_session_9ea949e79d0c.har session_id=9ea949e79d0c
