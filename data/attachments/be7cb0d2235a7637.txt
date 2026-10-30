@@ -1,0 +1,3 @@
+2026-10-30 07:54:38 [info     ] recording_started              session_id=eea5e5e82819 session_name=test_session
+2026-10-30 07:54:38 [info     ] har_saved                      entries=0 path=recordings/test_session_eea5e5e82819.har
+2026-10-30 07:54:38 [info     ] recording_stopped              duration_s=0.0 entry_count=0 har_path=recordings/test_session_eea5e5e82819.har session_id=eea5e5e82819
