@@ -1,3 +1,0 @@
-2026-11-03 08:50:36 [info     ] recording_started              session_id=dd6124b3072a session_name=test_session
-2026-11-03 08:50:36 [info     ] har_saved                      entries=0 path=recordings/test_session_dd6124b3072a.har
-2026-11-03 08:50:36 [info     ] recording_stopped              duration_s=0.0 entry_count=0 har_path=recordings/test_session_dd6124b3072a.har session_id=dd6124b3072a
