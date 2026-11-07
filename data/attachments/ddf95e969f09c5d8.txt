@@ -1,3 +1,0 @@
-2026-11-06 08:47:04 [info     ] recording_started              session_id=cadef8111b9b session_name=test_session
-2026-11-06 08:47:04 [info     ] har_saved                      entries=0 path=recordings/test_session_cadef8111b9b.har
-2026-11-06 08:47:04 [info     ] recording_stopped              duration_s=0.0 entry_count=0 har_path=recordings/test_session_cadef8111b9b.har session_id=cadef8111b9b
