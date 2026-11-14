@@ -1,0 +1,3 @@
+2026-11-14 08:20:07 [info     ] recording_started              session_id=59cbda9910ba session_name=test_session
+2026-11-14 08:20:07 [info     ] har_saved                      entries=0 path=recordings/test_session_59cbda9910ba.har
+2026-11-14 08:20:07 [info     ] recording_stopped              duration_s=0.0 entry_count=0 har_path=recordings/test_session_59cbda9910ba.har session_id=59cbda9910ba
