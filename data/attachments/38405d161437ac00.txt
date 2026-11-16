@@ -1,0 +1,2 @@
+2026-11-16 08:47:21 [info     ] har_saved                      entries=2 path=/tmp/tmpatk21pvm/test.har
+2026-11-16 08:47:21 [info     ] cases_generated                case_count=2 output_file=/tmp/tmpatk21pvm/Integration_Test_Suite.yaml skipped=0
