@@ -1,3 +1,0 @@
-2026-11-21 08:59:02 [info     ] recording_started              session_id=c8a4eb1bf55d session_name=test_session
-2026-11-21 08:59:02 [info     ] har_saved                      entries=0 path=recordings/test_session_c8a4eb1bf55d.har
-2026-11-21 08:59:02 [info     ] recording_stopped              duration_s=0.0 entry_count=0 har_path=recordings/test_session_c8a4eb1bf55d.har session_id=c8a4eb1bf55d
