@@ -1,0 +1,2 @@
+2026-11-24 11:50:35 [info     ] har_saved                      entries=2 path=/tmp/tmpkusvxvr1/test.har
+2026-11-24 11:50:35 [info     ] cases_generated                case_count=2 output_file=/tmp/tmpkusvxvr1/Integration_Test_Suite.yaml skipped=0
